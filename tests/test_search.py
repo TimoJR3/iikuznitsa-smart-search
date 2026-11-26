@@ -63,3 +63,25 @@ def test_upsell_blocks(search):
 def test_suggest_while_typing(search):
     r = search.suggest("мдаем")
     assert r["products"] and "mdaemon" in r["products"][0]["title"].lower()
+
+
+def test_absent_product_gets_alternatives(search):
+    r = search.search("teamviewer", use_llm=False)
+    assert r["status"] == "absent" and r["understanding"]["absent"]["name"] == "TeamViewer"
+    assert any("anydesk" in it["title"].lower() for it in r["items"][:4])
+
+
+def test_domestic_filter(search):
+    r = search.search("российский антивирус", use_llm=False)
+    assert "dr.web" in r["items"][0]["title"].lower() or "kaspersky" in r["items"][0]["title"].lower()
+
+
+def test_verified_recommendations_have_sources(search):
+    r = search.search("astra linux", use_llm=False)
+    verified = [x for b in r["bundles"] for x in b["items"] if x.get("fact")]
+    assert verified and all(x["fact"]["url"].startswith("https://") for x in verified)
+
+
+def test_registry_badge(search):
+    r = search.search("astra linux", use_llm=False)
+    assert any(b["type"] == "registry" for b in r["items"][0]["badges"])

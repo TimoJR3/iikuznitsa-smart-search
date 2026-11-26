@@ -11,9 +11,9 @@ const COLORS = {
   business: "#a6da6a", infra: "#48d0e6", dev: "#ff9f68", hardware: "#e6eaf5",
 };
 const BEACON = "#ffb547";
-const STATUS_COLOR = { ok: "#6ee0c0", weak: "#ffb547", no_match: "#ff6f6f" };
-const STATUS_TEXT = { ok: "найдено", weak: "неуверенно", no_match: "не найдено" };
-const ROUTES = ["astra linux", "сервер", "по для сервера", "антивирь", "винда", "мдаемон", "fcnhf kbyerc", "крипта про", "программа для чертежей", "бесперебойник"];
+const STATUS_COLOR = { ok: "#6ee0c0", weak: "#ffb547", no_match: "#ff6f6f", absent: "#c69cff" };
+const STATUS_TEXT = { ok: "найдено", weak: "неуверенно", no_match: "не найдено", absent: "нет в каталоге" };
+const ROUTES = ["astra linux", "сервер", "по для сервера", "антивирь", "винда", "мдаемон", "fcnhf kbyerc", "teamviewer", "российский антивирус", "программа для чертежей"];
 
 let session = "s" + Math.random().toString(36).slice(2);
 try { session = localStorage.getItem("atlas-session") || session; localStorage.setItem("atlas-session", session); } catch (e) { /* без хранилища */ }
@@ -399,9 +399,11 @@ function showResults(r, q, refined = false) {
 
 function renderTrace(r, llmState = "") {
   const u = r.understanding, steps = [`<li>Запрос <b>${esc(r.query)}</b></li>`];
+  if (u.absent) steps.push(`<li class="absent"><b>${esc(u.absent.name)}</b> нет в каталоге, ищем: ${esc(u.absent.task)}</li>`);
+  if (u.domestic) steps.push(`<li class="intent"><b>Российское ПО</b>: реестр, импортозамещение, российские вендоры</li>`);
   if (u.layout_fixed) steps.push(`<li>Раскладка <b>${esc(u.normalized)}</b></li>`);
   for (const [a, b] of Object.entries(u.corrections || {})) steps.push(`<li><s>${esc(a)}</s> <b>${esc(b)}</b></li>`);
-  if (u.expansions?.length) steps.push(`<li>Синонимы <b>${esc(u.expansions.join(", "))}</b></li>`);
+  if (u.expansions?.length && !u.absent) steps.push(`<li>Синонимы <b>${esc(u.expansions.join(", "))}</b></li>`);
   if (u.rewritten_by_llm) steps.push(`<li class="llm">GigaChat понял как <b>${esc(u.rewritten_by_llm)}</b></li>`);
   else if (llmState === "pending") steps.push(`<li class="llm pending">GigaChat уточняет запрос…</li>`);
   else if (llmState === "none") steps.push(`<li class="llm">GigaChat не нашёл лучшего толкования</li>`);
@@ -413,14 +415,15 @@ function renderTrace(r, llmState = "") {
 
 function chips(it) {
   const c = [`<span class="chip"><span class="sw" style="background:${COLORS[it.group]}"></span>${esc(it.kind)}</span>`];
-  for (const b of it.badges || []) c.push(`<span class="chip ${b.type === "promo" || b.type === "deal" ? b.type : ""}">${esc(b.text)}</span>`);
+  for (const b of it.badges || []) c.push(`<span class="chip ${["promo", "deal", "registry", "cert"].includes(b.type) ? b.type : ""}">${esc(b.text)}</span>`);
   return `<div class="chips">${c.join("")}</div>`;
 }
 
 function renderResults(r) {
   const n = r.items.length;
   let notice = "";
-  if (r.status === "no_match") notice = `<p class="notice miss">Точного совпадения нет. Показываем ближайшие по смыслу товары, запрос передан команде каталога.</p>`;
+  if (r.status === "absent") notice = `<p class="notice absent">«${esc(r.understanding.absent.name)}» нет в каталоге магазина. Показываем решения той же задачи: ${esc(r.understanding.absent.task)}. Запрос учтён в аналитике спроса.</p>`;
+  else if (r.status === "no_match") notice = `<p class="notice miss">Точного совпадения нет. Показываем ближайшие по смыслу товары, запрос передан команде каталога.</p>`;
   else if (r.status === "weak") notice = `<p class="notice">Поиск не уверен в ответе. Уточните запрос или выберите из близких товаров.</p>`;
   const items = r.items.map((it, k) => `<li class="result" data-pid="${it.product_id}" data-pos="${k}" tabindex="0">
       <span class="rank">${k + 1}</span>
@@ -437,7 +440,11 @@ function renderResults(r) {
 }
 function mini(x, block) {
   return `<button type="button" class="mini" data-pid="${x.product_id}" data-block="${block}">
-    <span><span class="sw" style="background:${COLORS[x.group]}"></span>${esc(x.title)}</span><small>от ${rub(x.price_from)}</small></button>`;
+    <span><span class="sw" style="background:${COLORS[x.group]}"></span>${esc(x.title)}</span><small>от ${rub(x.price_from)}</small></button>${fact(x)}`;
+}
+function fact(x) {
+  if (!x.fact) return "";
+  return `<p class="fact"><span aria-hidden="true">✓</span> ${esc(x.fact.text)}. <a href="${esc(x.fact.url)}" target="_blank" rel="noopener">${esc(x.fact.source)}</a></p>`;
 }
 
 $("#rail").addEventListener("pointerover", (e) => {
@@ -480,12 +487,20 @@ async function openProduct(id, fly) {
     ${p.price_note ? `<p class="price-note">${esc(p.price_note)}</p>` : ""}
     ${p.bundles?.length ? `<div class="d-section"><h3>С этим продуктом берут</h3>
       <p class="why">Сопутствующие решения из каталога: экосистема вендора и разделы, которые нужны вместе. На карте показаны пунктиром.</p>
-      ${orbit(p)}</div>` : ""}
+      ${orbit(p)}${sources(p)}</div>` : ""}
     ${p.alternatives?.length ? `<div class="d-section"><h3>Аналоги</h3><p class="why">тот же раздел, другие производители</p>
       ${p.alternatives.map((x) => mini(x, "alternative")).join("")}</div>` : ""}
     <div class="d-section"><h3>Варианты лицензий</h3><p class="desc">${p.variants} ${plural(p.variants, "вариант", "варианта", "вариантов")} в каталоге: сроки, число мест и тип лицензии. Цена указана для самого доступного.</p></div>`;
   if (fly) fit([p.xy, ...S.links.map((l) => [S.xs[l.i], S.ys[l.i]])], 0.25, 10);
   S.dirty = true;
+}
+
+function sources(p) {
+  const items = p.bundles.flatMap((b) => b.items).filter((x) => x.fact);
+  if (!items.length) return "";
+  return `<div class="sources"><h4>Проверено у вендоров</h4>${items.map((x) => `<p class="fact"><span aria-hidden="true">✓</span>
+    <button type="button" class="linklike" data-pid="${x.product_id}" data-block="verified">${esc(x.title)}</button>: ${esc(x.fact.text)}.
+    <a href="${esc(x.fact.url)}" target="_blank" rel="noopener">${esc(x.fact.source)}</a></p>`).join("")}</div>`;
 }
 
 function orbit(p) {
@@ -500,7 +515,7 @@ function orbit(p) {
     const right = Math.cos(n.a) > 0.15, left = Math.cos(n.a) < -0.15;
     const anchor = right ? "start" : left ? "end" : "middle";
     const tx = n.x + (right ? 18 : left ? -18 : 0), ty = n.y + (right || left ? 4 : Math.sin(n.a) > 0 ? 30 : -20);
-    const len = anchor === "middle" ? 30 : 17;
+    const len = anchor === "middle" ? 30 : 14;
     return `<text x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(short(n.title, len))}</text>
       <text class="cap" x="${tx}" y="${ty + 13}" text-anchor="${anchor}">${esc(short(n.block, len + 2))}</text>`;
   };
@@ -601,6 +616,7 @@ async function loadAnalytics(src = $("#an-source")?.value || "") {
     <div class="kpis">
       <div class="kpi accent"><b>${pct(t.understood_share)}</b><span>запросов поиск понял уверенно</span></div>
       <div class="kpi"><b>${pct(t.no_match_share)}</b><span>без подходящего товара</span></div>
+      <div class="kpi"><b>${t.absent ?? 0}</b><span>запросов о продуктах, которых нет в каталоге</span></div>
       <div class="kpi"><b>${t.corrected ?? 0}</b><span>исправлено опечаток и раскладок</span></div>
       <div class="kpi"><b>${t.llm_used ?? 0}</b><span>запросов уточнила GigaChat</span></div>
       <div class="kpi"><b>${pct(t.ctr)}</b><span>поисков с переходом в товар</span></div>

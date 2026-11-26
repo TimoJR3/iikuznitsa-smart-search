@@ -1,0 +1,40 @@
+{
+  "_comment": "Проверенные внешние источники для рекомендаций: совместимость продуктов, подтверждённая вендором или программой совместимости. a и b — регулярные выражения по названию продукта в каталоге (нижний регистр); связь работает в обе стороны. Дата проверки ссылок — 26.11.2026.",
+  "facts": [
+    {
+      "a": "astra linux special edition",
+      "b": "dr\\.web",
+      "text": "Dr.Web для Linux поддерживает Astra Linux Special Edition 1.6, 1.7 и 1.8, а также ОС «Альт»",
+      "source": "Dr.Web для Linux 11.1: системные требования (документация вендора)",
+      "url": "https://download.geo.drweb.com/pub/drweb/unix/server/11.1/documentation/html/en/sysrequirements.htm"
+    },
+    {
+      "a": "astra linux special edition",
+      "b": "kaspersky endpoint security",
+      "text": "Kaspersky Endpoint Security для Linux поддерживает Astra Linux Special Edition",
+      "source": "Kaspersky Endpoint Security 10 SP1 MR1 для Linux: аппаратные и программные требования (документация вендора)",
+      "url": "https://support.kaspersky.com/KES4Linux/10.1.1/ru-RU/180377.htm"
+    },
+    {
+      "a": "astra linux special edition",
+      "b": "кибер бэкап",
+      "text": "Кибер Бэкап 18.6 работает в Astra Linux SE 1.8 с включёнными механизмами защиты",
+      "source": "Протокол совместных испытаний, программа Ready for Astra",
+      "url": "https://astra.ru/upload/parser_jira/certs/1746867/Prot_se18_rdy-34059.pdf"
+    },
+    {
+      "a": "astra linux special edition",
+      "b": "secret net studio",
+      "text": "Secret Net Studio 8.2 совместим с Astra Linux SE 1.8",
+      "source": "Сертификат совместимости № 28752/2025, программа Ready for Astra",
+      "url": "https://astra.ru/upload/parser_jira/certs/cert_se18_RDY-28752.pdf"
+    },
+    {
+      "a": "astra linux|альт|ред ос",
+      "b": "кибер файлы",
+      "text": "Кибер Файлы совместимы с Astra Linux, АЛЬТ и РЕД ОС",
+      "source": "Anti-Malware.ru, новость от 21.03.2025",
+      "url": "https://www.anti-malware.ru/news/2025-03-21-114534/45591"
+    }
+  ]
+}

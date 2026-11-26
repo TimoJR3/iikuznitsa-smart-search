@@ -30,6 +30,9 @@ SOFTWARE_WORDS = {
     "антивирус", "office", "софт", "почтовый", "1с", "субд", "виртуализация", "бэкап", "резервное", "astra", "для",
     "защита", "mdaemon", "kaspersky", "dr.web", "криптопро",
 }
+RU_VENDORS = ("касперск|доктор веб|код безопасности|киберпротект|группа астра|ред софт|базальт|infowatch|"
+              "positive technologies|криптопро|эшелон|мтс линк|1с|аскон|нанософт|postgres professional|sberdevices|"
+              "яндекс|мойофис|р7|роса|аладдин|гарда|инфотекс|солар|usergate|элтекс|инферит|aquarius|yadro|depo")
 # Слова, которые сами по себе означают и железо, и ПО: решаем по контексту.
 AMBIGUOUS = {"сервер", "серверы", "серверное", "сканер", "диск"}
 
@@ -109,6 +112,8 @@ class Understanding:
     intent_reason: str = ""
     vendors: list[str] = field(default_factory=list)
     rewritten_by_llm: str = ""
+    absent: dict | None = None  # продукт, которого нет в каталоге, и чем его заменить
+    domestic: bool = False  # «российский», «отечественный», «импортозамещение»
 
     @property
     def expanded(self) -> str:
@@ -128,6 +133,19 @@ class SmartSearch:
         if custom_synonyms and custom_synonyms.exists():
             self.custom = json.loads(custom_synonyms.read_text(encoding="utf-8"))
             self.synonyms.update(self.custom)
+        # Проверенные внешние источники для рекомендаций и замены продуктов, которых нет в каталоге.
+        data_dir = synonyms_path.parent
+        facts_path, alt_path = data_dir / "vendor_facts.json", data_dir / "alternatives.json"
+        self.facts = json.loads(facts_path.read_text(encoding="utf-8"))["facts"] if facts_path.exists() else []
+        alts = json.loads(alt_path.read_text(encoding="utf-8")) if alt_path.exists() else {}
+        titles_all = " | ".join(self.p["title"].str.lower()) + " | " + " | ".join(self.p["vendor"].str.lower())
+        # Если продукт всё-таки появился в каталоге, замену не предлагаем.
+        self.replacements = {k: v for k, v in alts.items() if not k.startswith("_") and v["name"].lower() not in titles_all}
+        cat_path = self.p["category_path"].str.lower()
+        # Российское ПО: номер в реестре, раздел «Импортозамещение» или российский вендор.
+        ru_vendor = self.p["vendor"].str.lower().str.contains(RU_VENDORS, regex=True)
+        reg = (self.p["registry"] != "") if "registry" in self.p else False
+        self.is_domestic = (reg | ru_vendor | cat_path.str.contains("импортозамещ|российск", regex=True)).to_numpy()
         # Медиана цены по разделу каталога: для отметки «дешевле аналогов».
         g = self.p[self.p["min_price"] > 0].groupby("category_id")["min_price"]
         self.cat_median = g.median().to_dict()
@@ -197,6 +215,12 @@ class SmartSearch:
             if len(vn) >= 3 and re.search(rf"(?<![a-zа-я0-9]){re.escape(vn)}(?![a-zа-я0-9])", exp):
                 u.vendors.append(v)
         u.vendors = list(dict.fromkeys(u.vendors))
+        words = set(tokens(u.normalized)) | set(tokens(" ".join(u.expansions)))
+        for key, alt in self.replacements.items():
+            if key in words:
+                u.absent = {"key": key, **alt}
+                break
+        u.domestic = bool(re.search(r"российск|отечествен|импортозамещ|реестр", u.normalized))
         self._detect_intent(u)
         return u
 
@@ -216,9 +240,14 @@ class SmartSearch:
 
     # ---------- отбор и ранжирование ----------
     def _retrieve(self, u: Understanding, k: int = 300) -> tuple[np.ndarray, np.ndarray, float]:
-        q_stems = stems(u.expanded)
+        text = u.expanded
+        if u.domestic:
+            # «Российский» — фильтр, а не предмет поиска: иначе находится вендор «РОСА».
+            stripped = re.sub(r"(?<![а-я])(российск|отечествен|импортозамещ|реестр)[а-я]*", " ", text).strip()
+            text = stripped or text
+        q_stems = stems(text)
         bm = self.ix.bm25.scores(q_stems)
-        qv = embed([f"query: {u.expanded}"])[0]
+        qv = embed([f"query: {text}"])[0]
         sem = self.ix.emb @ qv
         bm_rank = np.argsort(-bm)[:k]
         sem_rank = np.argsort(-sem)[:k]
@@ -251,6 +280,8 @@ class SmartSearch:
             # Запрос называет категорию («сервер», «антивирус»): товары этой категории выше.
             if q_cat & self.ix.category_stems[i]:
                 score[i] += 0.008
+        if u.domestic:
+            score *= np.where(self.is_domestic, 1.0, 0.35)
         # Намерение: не показываем ПО на запрос про оборудование и наоборот.
         if u.intent == "hardware":
             score *= np.where(self.is_hw, 1.0, 0.25)
@@ -272,12 +303,19 @@ class SmartSearch:
     def search(self, query: str, limit: int = 12, use_llm: bool = True) -> dict:
         t0 = time.perf_counter()
         u = self.understand(query)
+        absent = u.absent
+        if absent:
+            # Продукта нет в каталоге: ищем решения той же задачи.
+            ua = self.understand(absent["query"])
+            ua.raw, ua.normalized, ua.absent = query, u.normalized, absent
+            ua.corrections, ua.expansions = u.corrections, [absent["query"]]
+            u = ua
         score, sem, bm_max = self._retrieve(u)
         order = np.argsort(-score)
         top = [int(i) for i in order[: max(limit, MIN_RESULTS)] if score[i] > 0]
         confidence = self._confidence(u, top, sem, bm_max)
         llm_used = False
-        if confidence < 0.5 and use_llm and self.llm is not None:
+        if confidence < 0.5 and use_llm and self.llm is not None and not absent:
             rewritten = self.llm.rewrite(query)
             if rewritten and normalize(rewritten) != u.normalized:
                 u2 = self.understand(rewritten)
@@ -298,7 +336,9 @@ class SmartSearch:
                     break
         items = [self._card(i, rank) for rank, i in enumerate(top[:limit])]
         status = "ok" if confidence >= 0.5 else ("weak" if confidence >= 0.3 else "no_match")
-        can_refine = (not use_llm) and confidence < 0.5 and self.llm is not None
+        if absent:
+            status = "absent"
+        can_refine = (not use_llm) and confidence < 0.5 and self.llm is not None and not absent
         result = {
             "query": query,
             "understanding": {**asdict(u), "expanded": u.expanded},
@@ -354,6 +394,10 @@ class SmartSearch:
             badges.append({"type": "deal", "text": f"Дешевле аналогов на {pct}%"})
             note = (f"Цена от {r['min_price']:,.0f} ₽ ниже медианы раздела «{r['category']}» на {pct}% "
                     f"(по {cnt} продуктам каталога).").replace(",", " ")
+        if r.get("registry"):
+            badges.append({"type": "registry", "text": f"Реестр российского ПО №{r['registry']}"})
+        if r.get("certificate"):
+            badges.append({"type": "cert", "text": f"Сертификат {r['certificate'].replace('; ', ', ')}"})
         if r["n_offers"] > 1:
             badges.append({"type": "variants", "text": f"{int(r['n_offers'])} вариантов лицензии"})
         return {
@@ -386,9 +430,35 @@ class SmartSearch:
             for q, _ in blocks:
                 self._quick(q)
 
+    def verified(self, anchor: int, exclude: set[int], limit: int = 3) -> list[dict]:
+        """Рекомендации с подтверждением вендора: связь продуктов из vendor_facts.json."""
+        title = self._titles[anchor]
+        out, seen = [], set()
+        for f in self.facts:
+            for side, other in ((f["a"], f["b"]), (f["b"], f["a"])):
+                if not re.search(side, title):
+                    continue
+                cands = [i for i, t in enumerate(self._titles)
+                         if re.search(other, t) and i != anchor and i not in exclude and i not in seen]
+                if not cands:
+                    continue
+                best = max(cands, key=lambda i: (self._titles[i].startswith(other.split("|")[0].replace("\\", "")),
+                                                 int(self.p["n_offers"].iat[i])))
+                seen.add(best)
+                card = self._card(best)
+                card["fact"] = {"text": f["text"], "source": f["source"], "url": f["url"]}
+                out.append(card)
+                break
+        return out[:limit]
+
     def recommend(self, anchor: int, exclude: set[int], per_block: int = 2) -> list[dict]:
         r = self.p.iloc[anchor]
         blocks = []
+        ver = self.verified(anchor, exclude)
+        if ver:
+            blocks.append({"title": "Совместимость подтверждена", "reason": "по документации вендоров и программе Ready for Astra",
+                           "items": ver})
+            exclude = exclude | {c["product_id"] for c in ver}
         # Экосистема вендора: другие линейки того же производителя.
         same = self.p[(self.p["vendor"] == r["vendor"]) & (self.p["title"] != r["title"])]
         same = same[~same["product_id"].isin(exclude)].drop_duplicates("category").head(per_block + 1)

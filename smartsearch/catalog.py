@@ -130,11 +130,25 @@ def build_products(off: pd.DataFrame, cat: pd.DataFrame) -> pd.DataFrame:
             "description": first["description"][:300],
             "variants": " | ".join(g["name"].head(5)),
             "max_discount": float(g["discount"].max()),
+            "registry": _first_param(g, "Номер записи в реестре отечественного ПО", digits=True),
+            "certificate": _first_param(g, "Сертификаты и стандарты"),
             "oldprice": float(first["oldprice"]),
         })
     prod = pd.DataFrame(rows).reset_index(drop=True)
     prod.insert(0, "product_id", prod.index.astype(int))
     return prod
+
+
+def _first_param(g: pd.DataFrame, name: str, digits: bool = False) -> str:
+    """Первое осмысленное значение параметра среди вариантов продукта."""
+    for params in g["params"]:
+        v = (params.get(name) or "").strip()
+        if not v or re.search(r"другое|отсутств|не определ|без сертификата", v, re.IGNORECASE):
+            continue
+        if digits and not re.fullmatch(r"\d+", v):
+            continue
+        return v
+    return ""
 
 
 def category_paths(cat: pd.DataFrame) -> dict[int, list[str]]:

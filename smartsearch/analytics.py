@@ -114,7 +114,7 @@ class Analytics:
         tot = self._rows(f"""
             SELECT COUNT(*) AS searches, COUNT(DISTINCT lower(query)) AS unique_queries,
                    MIN(ts) AS first_ts, MAX(ts) AS last_ts,
-                   SUM(status = 'no_match') AS no_match, SUM(status = 'weak') AS weak,
+                   SUM(status = 'no_match') AS no_match, SUM(status = 'weak') AS weak, SUM(status = 'absent') AS absent,
                    SUM(llm_used) AS llm_used, SUM(corrections != '{{}}') AS corrected,
                    AVG(latency_ms) AS avg_latency_ms
             FROM search_events {where}""", args)[0]
@@ -134,7 +134,7 @@ class Analytics:
                    MAX(e.llm_rewrite) AS llm_rewrite, MAX(e.top_title) AS top_title, MAX(e.top_category) AS top_category,
                    g.label AS label, MAX(e.ts) AS last_ts
             FROM search_events e LEFT JOIN gap_labels g ON g.query = lower(e.query)
-            {where + ' AND' if where else 'WHERE'} e.status IN ('no_match', 'weak')
+            {where + ' AND' if where else 'WHERE'} e.status IN ('no_match', 'weak', 'absent')
             GROUP BY lower(e.query) ORDER BY n DESC, confidence LIMIT 30""", args)
         for g in gaps:
             g["label_text"] = GAP_LABELS.get(g["label"] or "", "Не размечено")

@@ -7,7 +7,15 @@ import sqlite3
 import threading
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
+MSK = timezone(timedelta(hours=3))
+
+
+def now() -> str:
+    """Время событий по Москве независимо от часового пояса сервера."""
+    return datetime.now(MSK).strftime("%Y-%m-%d %H:%M:%S")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS search_events (
@@ -60,7 +68,7 @@ class Analytics:
         with self._lock:
             self.db.execute(
                 "INSERT INTO search_events VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (eid, time.strftime("%Y-%m-%d %H:%M:%S"), session_id, source, res["query"], u["normalized"],
+                (eid, now(), session_id, source, res["query"], u["normalized"],
                  u["expanded"], json.dumps(u["corrections"], ensure_ascii=False), u["intent"], res["status"],
                  res["confidence"], int(res["llm_used"]), u["rewritten_by_llm"], len(top),
                  json.dumps([it["product_id"] for it in top[:10]]), top[0]["title"] if top else "",
@@ -72,7 +80,7 @@ class Analytics:
     def log_click(self, event_id: str, product_id: int, position: int, block: str) -> None:
         with self._lock:
             self.db.execute("INSERT INTO clicks VALUES (?,?,?,?,?)",
-                            (event_id, product_id, position, block, time.strftime("%Y-%m-%d %H:%M:%S")))
+                            (event_id, product_id, position, block, now()))
             self.db.commit()
 
     def label_gap(self, query: str, label: str, note: str = "") -> None:
@@ -80,7 +88,7 @@ class Analytics:
             raise ValueError(label)
         with self._lock:
             self.db.execute("INSERT OR REPLACE INTO gap_labels VALUES (?,?,?,?)",
-                            (query.strip().lower(), label, note, time.strftime("%Y-%m-%d %H:%M:%S")))
+                            (query.strip().lower(), label, note, now()))
             self.db.commit()
 
     def _rows(self, sql: str, args: tuple = ()) -> list[dict]:

@@ -3,7 +3,7 @@
 # Сборка из корня репозитория:
 #   docker build --platform linux/amd64 -f deploy/cloudru/Dockerfile -t smart-search:v1 .
 FROM python:3.11-slim
-ENV PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8 PIP_NO_CACHE_DIR=1 HF_HOME=/app/data/hf PORT=8000
+ENV OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 TOKENIZERS_PARALLELISM=false PYTHONUNBUFFERED=1 PYTHONIOENCODING=utf-8 PIP_NO_CACHE_DIR=1 HF_HOME=/app/data/hf PORT=8000
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates openssl && rm -rf /var/lib/apt/lists/* \
  && curl -fsSL https://gu-st.ru/content/Other/doc/russian_trusted_root_ca.cer -o /tmp/ru.cer \
  && (openssl x509 -in /tmp/ru.cer -out /usr/local/share/ca-certificates/russian_trusted_root_ca.crt || openssl x509 -inform DER -in /tmp/ru.cer -out /usr/local/share/ca-certificates/russian_trusted_root_ca.crt) \

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import logging
 import os
+import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
-
-import json
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.gzip import GZipMiddleware
@@ -23,9 +25,32 @@ from smartsearch.index import GROUPS, SearchIndex  # noqa: E402
 from smartsearch.llm import GigaChatRewriter  # noqa: E402
 from smartsearch.search import SmartSearch  # noqa: E402
 
+log = logging.getLogger("smartsearch")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 DATA = Path(os.getenv("DATA_DIR", ROOT / "data"))
-RUNTIME = Path(os.getenv("RUNTIME_DIR", DATA / "runtime"))
-RUNTIME.mkdir(parents=True, exist_ok=True)
+SEED = DATA / "runtime"
+
+
+def writable_runtime() -> Path:
+    """Папка для журнала и кеша. Если файловая система образа только для чтения
+    (так бывает в контейнерных платформах), переходим во временную папку и копируем туда
+    журнал с прогоном выборки магазина."""
+    for cand in [Path(os.getenv("RUNTIME_DIR", SEED)), Path(tempfile.gettempdir()) / "smart-search-runtime"]:
+        try:
+            cand.mkdir(parents=True, exist_ok=True)
+            probe = cand / ".write-test"
+            probe.write_text("ok")
+            probe.unlink()
+        except OSError:
+            continue
+        if cand != SEED and (SEED / "analytics.db").exists() and not (cand / "analytics.db").exists():
+            shutil.copy2(SEED / "analytics.db", cand / "analytics.db")
+        return cand
+    raise RuntimeError("нет доступной для записи папки")
+
+
+RUNTIME = writable_runtime()
 
 app = FastAPI(title="Умный поиск store.softline.ru — прототип ИИкузницы", version="0.1.0")
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -42,6 +67,16 @@ def startup() -> None:
     s.search("astra linux", use_llm=False)  # прогрев модели эмбеддингов
     state.update(search=s, analytics=Analytics(RUNTIME / "analytics.db"), llm=llm is not None,
                  started=time.strftime("%Y-%m-%d %H:%M:%S"), load_s=round(time.time() - t, 1))
+    log.info("готово за %.1f с, журнал: %s, потоков torch: %s", time.time() - t, RUNTIME, _threads())
+
+
+def _threads() -> int:
+    try:
+        import torch
+
+        return torch.get_num_threads()
+    except Exception:
+        return -1
 
 
 @app.get("/health")
@@ -55,7 +90,11 @@ def health() -> dict:
 def api_search(q: str = Query(..., min_length=1, max_length=200), session: str | None = None,
                limit: int = Query(12, ge=4, le=40)) -> dict:
     res = state["search"].search(q, limit=limit)
-    res["event_id"] = state["analytics"].log_search(res, session)
+    try:
+        res["event_id"] = state["analytics"].log_search(res, session)
+    except Exception:  # журнал не должен ломать поиск покупателю
+        log.exception("не удалось записать событие поиска")
+        res["event_id"] = None
     return res
 
 

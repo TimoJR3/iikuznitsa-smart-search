@@ -223,6 +223,9 @@ class SmartSearch:
                 # Название начинается со слова запроса: «Сервер INFERIT…» важнее «Радиатор для сервера».
                 if any(title.startswith(s) for s in q_cat):
                     score[i] += 0.006
+                # Аксессуар к искомому товару («Сумка для ноутбука») ниже самого товара.
+                elif any(f"для {s}" in title for s in q_cat):
+                    score[i] -= 0.008
             # Запрос называет категорию («сервер», «антивирус»): товары этой категории выше.
             if q_cat & self.ix.category_stems[i]:
                 score[i] += 0.008
@@ -261,7 +264,7 @@ class SmartSearch:
                 order2 = np.argsort(-score2)
                 top2 = [int(i) for i in order2[: max(limit, MIN_RESULTS)] if score2[i] > 0]
                 c2 = self._confidence(u2, top2, sem2, bm2)
-                if c2 >= max(confidence + 0.1, 0.5):
+                if c2 >= confidence + 0.1:
                     u, top, confidence, sem = u2, top2, c2, sem2
                 llm_used = True
         # Гарантия минимума: добираем ближайшие по смыслу товары.

@@ -16,7 +16,7 @@ COPY smartsearch smartsearch
 COPY app app
 COPY scripts scripts
 COPY eval eval
-COPY data/synonyms.json data/synonyms.json
+COPY data/synonyms.json data/vendor_facts.json data/alternatives.json data/
 COPY data/index data/index
 COPY ["data/raw/Выборка поисковых запросов.xlsx", "data/raw/"]
 RUN python scripts/replay_queries.py > /dev/null

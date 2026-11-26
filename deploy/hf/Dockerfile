@@ -14,7 +14,7 @@ COPY smartsearch smartsearch
 COPY app app
 COPY scripts scripts
 COPY eval eval
-COPY data/synonyms.json data/synonyms.json
+COPY data/synonyms.json data/vendor_facts.json data/alternatives.json data/
 RUN --mount=type=secret,id=FEED_FOLDER_URL,mode=0444,required=true \
     gdown --folder "$(cat /run/secrets/FEED_FOLDER_URL)" -O data/raw \
  && python scripts/build_index.py --feed data/raw/Mindbox.yml.gz.xml --out data/index \

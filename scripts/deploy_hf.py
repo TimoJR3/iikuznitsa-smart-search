@@ -14,7 +14,7 @@ from pathlib import Path
 from huggingface_hub import HfApi
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = ["smartsearch", "app", "scripts", "eval", "requirements.txt", "data/synonyms.json"]
+FILES = ["smartsearch", "app", "scripts", "eval", "requirements.txt", "data/synonyms.json", "data/vendor_facts.json", "data/alternatives.json"]
 
 
 def main() -> None:

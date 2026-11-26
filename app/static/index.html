@@ -3,79 +3,72 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Умный поиск по каталогу ПО и оборудования</title>
+  <title>Атлас каталога — умный поиск</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
+<body data-mode="search" data-stage="intro">
+  <canvas id="map" aria-hidden="true"></canvas>
+  <div class="veil" aria-hidden="true"></div>
+  <div id="tooltip" class="tooltip" hidden></div>
+
   <header class="topbar">
-    <div class="brand">Умный поиск <span>прототип для store.softline.ru</span></div>
-    <nav class="tabs" role="tablist">
-      <button role="tab" aria-selected="true" data-tab="search">Поиск</button>
-      <button role="tab" aria-selected="false" data-tab="analytics">Аналитика поиска</button>
+    <a class="logo" href="/" aria-label="Атлас каталога, на главную">
+      <svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+        <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" opacity=".35"/>
+        <circle cx="16" cy="16" r="8" fill="none" stroke="currentColor" stroke-width="2" opacity=".6"/>
+        <path d="M16 4 L19 16 L16 28 L13 16 Z" fill="#FFB547"/>
+      </svg>
+      <span>Атлас каталога</span>
+    </a>
+    <nav class="modes" role="tablist" aria-label="Режим">
+      <button role="tab" aria-selected="true" data-mode="search">Поиск</button>
+      <button role="tab" aria-selected="false" data-mode="analytics">Аналитика спроса</button>
     </nav>
+    <p class="status-line" id="status-line">Загружаем карту каталога</p>
   </header>
 
-  <main>
-    <section id="tab-search" class="tab-panel">
-      <form id="search-form" class="searchbox" autocomplete="off" role="search">
-        <label for="q" class="sr-only">Поиск по каталогу</label>
-        <input id="q" name="q" type="search" placeholder="Например: винда про, астра линукс, сервер, антивирь для офиса"
-               aria-autocomplete="list" aria-controls="suggest" autofocus>
-        <button type="submit">Найти</button>
-        <div id="suggest" class="suggest" hidden></div>
-      </form>
-      <div class="examples" id="examples"></div>
+  <section class="hero" id="hero">
+    <h1>Каталог, который понимает, что&nbsp;вы&nbsp;ищете</h1>
+    <p>Каждая точка на карте — продукт из каталога store.softline.ru. Похожие по назначению лежат рядом, поэтому поиск понимает жаргон, опечатки и описание задачи своими словами.</p>
+  </section>
 
-      <div id="understanding" class="understanding" hidden></div>
+  <form id="search-form" class="capsule" autocomplete="off" role="search">
+    <label for="q" class="sr-only">Что ищете</label>
+    <svg class="capsule-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M15.5 15.5 L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    <input id="q" type="search" placeholder="Например: винда про, сервер, антивирь для офиса"
+           aria-autocomplete="list" aria-controls="suggest" aria-expanded="false">
+    <button type="submit">Найти</button>
+    <div id="suggest" class="suggest" role="listbox" hidden></div>
+  </form>
 
-      <div class="layout">
-        <div>
-          <div id="status" class="status" hidden></div>
-          <ol id="results" class="results"></ol>
-        </div>
-        <aside id="side" class="side"></aside>
-      </div>
-    </section>
+  <div class="routes" id="routes" aria-label="Примеры запросов"></div>
+  <ol class="trace" id="trace" aria-label="Как поиск понял запрос" hidden></ol>
 
-    <section id="tab-analytics" class="tab-panel" hidden>
-      <div class="an-head">
-        <h1>Что ищут клиенты</h1>
-        <div class="an-controls">
-          <label>Источник
-            <select id="an-source">
-              <option value="">Все события</option>
-              <option value="demo">Поиски на стенде</option>
-              <option value="replay">Прогон выборки запросов</option>
-            </select>
-          </label>
-          <button id="an-refresh" type="button">Обновить</button>
-        </div>
-      </div>
-      <p id="an-period" class="muted"></p>
-      <div id="an-kpi" class="kpis"></div>
-      <div class="an-grid">
-        <section class="panel wide">
-          <h2>Запросы без уверенного ответа</h2>
-          <p class="muted">Здесь клиент, скорее всего, не нашёл товар. Отметьте причину, чтобы команда каталога или поиска взяла запрос в работу.</p>
-          <table id="an-gaps" class="table"></table>
-        </section>
-        <section class="panel">
-          <h2>Частые запросы</h2>
-          <table id="an-top" class="table"></table>
-        </section>
-        <section class="panel">
-          <h2>Категории, которые находят</h2>
-          <div id="an-cats" class="bars"></div>
-        </section>
-        <section class="panel wide">
-          <h2>Последние поиски</h2>
-          <table id="an-recent" class="table"></table>
-        </section>
-      </div>
-    </section>
-  </main>
+  <aside class="rail" id="rail" aria-live="polite">
+    <div class="rail-search" id="rail-search"></div>
+    <div class="rail-analytics" id="rail-analytics" hidden></div>
+  </aside>
+
+  <aside class="drawer" id="drawer" aria-label="Карточка продукта" hidden>
+    <button class="drawer-close" id="drawer-close" type="button" aria-label="Закрыть карточку">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M6 6 L18 18 M18 6 L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+    </button>
+    <div id="drawer-body"></div>
+  </aside>
+
+  <div class="legend" id="legend" aria-label="Разделы каталога на карте"></div>
+
+  <div class="zoom" aria-label="Масштаб карты">
+    <button type="button" id="zoom-in" aria-label="Приблизить">+</button>
+    <button type="button" id="zoom-out" aria-label="Отдалить">−</button>
+    <button type="button" id="zoom-reset" aria-label="Показать всю карту">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 9 V4 H9 M15 4 H20 V9 M20 15 V20 H15 M9 20 H4 V15" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+    </button>
+  </div>
+
   <script src="/static/app.js"></script>
 </body>
 </html>

@@ -7,8 +7,11 @@ import sys
 import time
 from pathlib import Path
 
+import json
+
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -16,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from smartsearch.analytics import Analytics  # noqa: E402
-from smartsearch.index import SearchIndex  # noqa: E402
+from smartsearch.index import GROUPS, SearchIndex  # noqa: E402
 from smartsearch.llm import GigaChatRewriter  # noqa: E402
 from smartsearch.search import SmartSearch  # noqa: E402
 
@@ -25,6 +28,7 @@ RUNTIME = Path(os.getenv("RUNTIME_DIR", DATA / "runtime"))
 RUNTIME.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Умный поиск store.softline.ru — прототип ИИкузницы", version="0.1.0")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 state: dict = {}
 
 
@@ -91,6 +95,41 @@ def api_label(g: GapLabel) -> dict:
 @app.get("/api/analytics")
 def api_analytics(source: str | None = None) -> JSONResponse:
     return JSONResponse(state["analytics"].summary(source))
+
+
+@app.get("/api/map")
+def api_map() -> Response:
+    """Вся карта каталога одним ответом: координаты, группа, название, вендор, цена. Кешируется на старте."""
+    if "map_json" not in state:
+        s: SmartSearch = state["search"]
+        p, xy = s.p, s.ix.xy
+        payload = {
+            "groups": {k: v[0] for k, v in GROUPS.items()},
+            "points": [
+                [int(i), round(float(xy[i][0]), 4), round(float(xy[i][1]), 4), g, t[:90], v[:40], round(pr)]
+                for i, (g, t, v, pr) in enumerate(zip(p["group"], p["title"], p["vendor"], p["min_price"]))
+            ],
+        }
+        state["map_json"] = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    return Response(state["map_json"], media_type="application/json",
+                    headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/api/analytics/map")
+def api_analytics_map(source: str | None = None) -> list[dict]:
+    """Запросы на карте каталога: где спрос, и где он не находит товара."""
+    s: SmartSearch = state["search"]
+    where, args = ("WHERE source = ?", (source,)) if source else ("", ())
+    rows = state["analytics"]._rows(f"""
+        SELECT lower(query) AS query, COUNT(*) AS n, MIN(status) AS status, AVG(confidence) AS confidence,
+               MAX(top_product_ids) AS ids FROM search_events {where} GROUP BY lower(query)""", args)
+    out = []
+    for r in rows:
+        ids = [i for i in json.loads(r.pop("ids") or "[]") if 0 <= i < len(s.p)]
+        r["xy"] = s.query_xy(ids)
+        r["confidence"] = round(r["confidence"] or 0, 2)
+        out.append(r)
+    return out
 
 
 @app.get("/api/product/{product_id}")

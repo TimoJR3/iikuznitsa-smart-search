@@ -283,11 +283,21 @@ class SmartSearch:
             "confidence": round(confidence, 3),
             "llm_used": llm_used,
             "items": items,
+            "query_xy": self.query_xy(top[:limit]),
             "bundles": self.recommend(top[0], exclude=set(top[:limit])) if top else [],
             "alternatives": self.alternatives(top[0], exclude=set(top[:limit])) if top else [],
             "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
         }
         return result
+
+    def query_xy(self, ids: list[int]) -> list[float]:
+        """Точка запроса на карте: взвешенный по рангу центр первых результатов."""
+        if not ids:
+            return [0.5, 0.5]
+        ids = ids[:5]
+        w = np.array([1.0 / (r + 1) for r in range(len(ids))])
+        xy = (self.ix.xy[ids] * w[:, None]).sum(axis=0) / w.sum()
+        return [round(float(xy[0]), 4), round(float(xy[1]), 4)]
 
     def _confidence(self, u: Understanding, top: list[int], sem: np.ndarray, bm_max: float) -> float:
         """0..1: насколько выдача отвечает на запрос. Низкая уверенность -> LLM и метка в аналитике."""
@@ -318,6 +328,9 @@ class SmartSearch:
             "product_id": int(r["product_id"]),
             "title": r["title"],
             "vendor": r["vendor"],
+            "group": r["group"],
+            "xy": [round(float(self.ix.xy[i][0]), 4), round(float(self.ix.xy[i][1]), 4)],
+            "variants": int(r["n_offers"]),
             "category": r["category_path"],
             "kind": "оборудование" if r["product_type"] == "электроника" else "ПО",
             "price_from": r["min_price"],

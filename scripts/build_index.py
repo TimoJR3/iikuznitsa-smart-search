@@ -17,7 +17,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--feed", type=Path, default=Path("data/raw/Mindbox.yml.gz.xml"))
     ap.add_argument("--out", type=Path, default=Path("data/index"))
+    ap.add_argument("--map-only", action="store_true", help="пересчитать только 2D-карту")
     args = ap.parse_args()
+    if args.map_only:
+        SearchIndex.rebuild_map(args.out)
+        print("Карта пересчитана")
+        return
     t = time.time()
     off, cat = parse_feed(args.feed)
     print(f"Фид: {len(off)} SKU, {len(cat)} категорий, {time.time() - t:.1f} с")

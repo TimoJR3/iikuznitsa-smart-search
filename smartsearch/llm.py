@@ -9,12 +9,20 @@ import threading
 import time
 from pathlib import Path
 
-PROMPT = (
+from gigachat.models import Chat, Messages, MessagesRole
+
+SYSTEM = (
     "Ты помогаешь поиску интернет-магазина store.softline.ru: программное обеспечение и компьютерное оборудование "
-    "для компаний. Перепиши запрос покупателя в 2–6 слов, как товар назван в каталоге: категория товара и, если "
-    "уместно, 2–3 известных бренда из этой категории. Исправь опечатки, жаргон и раскладку. Ответь одной строкой, "
-    "только слова через пробел, без пояснений. Если запрос бессмысленный или не про ПО и оборудование, ответь: НЕТ"
-    "\nЗапрос: {query}"
+    "для компаний. Покупатель описывает задачу своими словами. Переведи запрос на язык каталога: категория товара "
+    "и 2–3 конкретных продукта или бренда, которые решают эту задачу и продаются в России. Исправь опечатки, жаргон "
+    "и раскладку. Ответ — одна строка из 3–8 слов через пробел, без пояснений и без слова «категория». "
+    "Ответь НЕТ, только если запрос — бессмысленный набор букв.\n"
+    "Примеры:\n"
+    "рисовать схемы сетей -> диаграммы схемы Microsoft Visio\n"
+    "резервные копии серверов -> резервное копирование Кибер Бэкап RuBackup\n"
+    "поставить пароль на флешку -> шифрование защита информации Secret Net\n"
+    "созвоны с клиентами -> видеоконференции МТС Линк\n"
+    "ывапролд -> НЕТ"
 )
 
 
@@ -53,13 +61,18 @@ class GigaChatRewriter:
             return self.cache[key]
         t = time.perf_counter()
         try:
-            r = self.client.chat(PROMPT.format(query=query.strip()[:200]))
+            r = self.client.chat(Chat(
+                messages=[Messages(role=MessagesRole.SYSTEM, content=SYSTEM),
+                          Messages(role=MessagesRole.USER, content=query.strip()[:200])],
+                temperature=0.1, max_tokens=40,
+            ))
         except Exception as e:  # сеть, лимиты, ключ: поиск продолжает работать без LLM
             self._log({"query": query, "error": type(e).__name__})
             return None
         lines = [ln.strip(" .\"«»*-") for ln in r.choices[0].message.content.splitlines() if ln.strip(" .\"«»*-")]
         text = lines[0][:120] if lines else ""
         text = re.sub(r"^(?:категория|запрос|ответ|ключевые слова)\s*:\s*", "", text, flags=re.IGNORECASE)
+        text = text.split("->")[-1].strip()
         if text.upper().startswith("НЕТ"):
             text = ""
         self._log({"query": query, "rewrite": text, "model": self.model,

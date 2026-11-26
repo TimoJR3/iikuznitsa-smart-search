@@ -152,12 +152,14 @@ class SmartSearch:
         self.cat_count = g.size().to_dict()
         self.vocab_keys = [w for w, c in index.vocab.items() if len(w) >= 3 and not w.isdigit()]
         self.vocab_set = set(index.vocab)
+        self.vocab_stems = {stem(w) for w in index.vocab}
         self.is_hw = (self.p["product_type"] == "электроника").to_numpy()
         self.llm = llm
         titles = self.p["title"].map(normalize)
         self._titles = titles.tolist()
         self._vendor_norm = self.p["vendor"].map(normalize).to_numpy()
         self._quick_cache: dict[str, list[int]] = {}
+        self.is_support = self.p["title"].str.lower().str.contains("поддержк|техподдержк", regex=True).to_numpy()
 
     def add_synonym(self, term: str, expansions: list[str]) -> dict:
         term = normalize(term)
@@ -195,6 +197,8 @@ class SmartSearch:
         # Опечатки и кириллица вместо латиницы: «мдаемон» -> mdaemon, «линукс» -> linux.
         for i, t in enumerate(toks):
             if i in used or t in self.vocab_set or t in self.synonyms or t.isdigit() or len(t) < 4:
+                continue
+            if stem(t) in self.vocab_stems:  # «компьютеры» — не опечатка, а другая форма слова из каталога
                 continue
             cands = [t, translit(t)] if has_cyr(t) else [t]
             best = None
@@ -280,6 +284,9 @@ class SmartSearch:
             # Запрос называет категорию («сервер», «антивирус»): товары этой категории выше.
             if q_cat & self.ix.category_stems[i]:
                 score[i] += 0.008
+        # Техподдержка и сертификаты поддержки — услуги к продукту, а не сам продукт: ниже, если о них не спрашивали.
+        if "поддерж" not in u.normalized:
+            score *= np.where(self.is_support, 0.6, 1.0)
         if u.domestic:
             score *= np.where(self.is_domestic, 1.0, 0.35)
         # Намерение: не показываем ПО на запрос про оборудование и наоборот.
@@ -315,7 +322,10 @@ class SmartSearch:
         top = [int(i) for i in order[: max(limit, MIN_RESULTS)] if score[i] > 0]
         confidence = self._confidence(u, top, sem, bm_max)
         llm_used = False
-        if confidence < 0.5 and use_llm and self.llm is not None and not absent:
+        # Описание задачи своими словами (3+ значимых слова) уточняем у GigaChat при любой неполной уверенности.
+        n_words = len([t for t in tokens(u.normalized) if t not in STOP and stem(t) not in GENERIC])
+        llm_threshold = 0.75 if n_words >= 3 else 0.5
+        if confidence < llm_threshold and use_llm and self.llm is not None and not absent:
             rewritten = self.llm.rewrite(query)
             if rewritten and normalize(rewritten) != u.normalized:
                 u2 = self.understand(rewritten)
@@ -324,7 +334,7 @@ class SmartSearch:
                 order2 = np.argsort(-score2)
                 top2 = [int(i) for i in order2[: max(limit, MIN_RESULTS)] if score2[i] > 0]
                 c2 = self._confidence(u2, top2, sem2, bm2)
-                if c2 >= confidence + 0.1:
+                if c2 >= confidence + 0.05:
                     u, top, confidence, sem = u2, top2, c2, sem2
                 llm_used = True
         # Гарантия минимума: добираем ближайшие по смыслу товары.
@@ -338,7 +348,7 @@ class SmartSearch:
         status = "ok" if confidence >= 0.5 else ("weak" if confidence >= 0.3 else "no_match")
         if absent:
             status = "absent"
-        can_refine = (not use_llm) and confidence < 0.5 and self.llm is not None and not absent
+        can_refine = (not use_llm) and confidence < llm_threshold and self.llm is not None and not absent
         result = {
             "query": query,
             "understanding": {**asdict(u), "expanded": u.expanded},
@@ -377,7 +387,8 @@ class SmartSearch:
         hay = " ".join([self._titles[top[0]], self._vendor_norm[top[0]], normalize(self.p["category"].iat[top[0]])])
         hay_stems = set(stems(hay)) | set(tokens(hay))
         matched = sum(1 for w in words if w in hay_stems or w in hay) + (1 if alt & hay_stems else 0)
-        lexical = min(1.0, matched / max(1, len(words)))
+        # Два совпавших значимых слова — полное совпадение: длинное описание задачи не штрафуется.
+        lexical = min(1.0, matched / max(1, min(len(words), 2)))
         semantic = float(np.clip((sem[top[0]] - 0.78) / 0.1, 0, 1))
         return 0.6 * lexical + 0.4 * semantic
 

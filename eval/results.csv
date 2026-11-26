@@ -1,27 +1,27 @@
 query,type,source,base_n,base_hit1,base_hit4,smart_n,smart_hit1,smart_hit4,smart_top1,confidence,latency_ms
-astra linux,точное название,выборка организатора,12,True,True,12,True,True,Astra Linux Special Edition 1.7,0.981,142.2
-Microsoft Office для дома и бизнеса,точное название,выборка организатора,1,True,True,12,True,True,Microsoft Office для дома и бизнеса 2024,1.0,144.9
-kaspersky small office security,точное название,выборка организатора,2,True,True,12,True,True,Kaspersky Small Office Security,0.924,149.2
-крипто про csp 5.0,опечатка/раздельное написание,выборка организатора,10,True,True,12,True,True,КриптоПро CSP 5.0: серверная,1.0,147.7
-anydesk,точное название,выборка организатора,1,True,True,12,True,True,AnyDesk,0.952,135.1
-кибер бэкап,точное название,выборка организатора,8,True,True,12,True,True,Киберпротект Кибер Бэкап Стандартная редакция,1.0,146.2
-сканер-вс,точное название,выборка организатора,5,True,True,12,True,True,НПО Эшелон Сканер-ВС 7 в комплекте OC CH Astra Linux Special Edition,0.888,164.4
-мтс,сокращение,выборка организатора,3,True,True,12,True,True,МТС Линк Стандарт,0.984,157.6
-max patrol,раздельное написание,выборка организатора,2,True,True,12,True,True,Positive Technologies MaxPatrol Endpoint Protection Platform,0.795,145.3
-365,сокращение,выборка организатора,12,False,True,12,True,True,Microsoft 365 для семьи 6GQ-00084,1.0,138.3
-сервер,намерение,пример из ТЗ,12,False,False,12,True,True,Сервер INFERIT RS108 R1G2D24/1x4216/2x16GB/4x240GB/9361-8i/2x800W,0.878,133.4
-по для сервера,намерение,пример из ТЗ,12,False,False,12,True,True,Kaspersky Security для почтовых серверов базовая,0.886,132.2
-антивирь,жаргон,пример из ТЗ,0,False,False,12,True,True,Доктор Веб Dr.Web Server Security Suite,0.961,149.3
-офис,жаргон,пример из ТЗ,12,False,False,12,True,True,Microsoft Office для дома и бизнеса 2024,0.913,140.8
-винда,жаргон,пример из ТЗ,0,False,False,12,True,True,Microsoft Windows 11 Pro FQC-10572,0.82,145.4
-астра линукс,опечатка/транслит,пример из ТЗ,0,False,False,12,True,True,Astra Linux Special Edition 1.7,1.0,153.3
-мдаемон,опечатка/транслит,пример из ТЗ,0,False,False,12,True,True,MDaemon Technologies MDaemon,0.909,144.8
-fcnhf kbyerc,раскладка,составлен командой,0,False,False,12,True,True,Astra Linux Special Edition 1.7,1.0,167.4
-касперский смол офис,транслит,составлен командой,0,False,False,12,True,True,Kaspersky Small Office Security,0.7,146.0
-кибербекап,опечатка,составлен командой,0,False,False,12,True,True,Киберпротект Кибер Бэкап,0.937,157.1
-крипта про,жаргон,составлен командой,0,False,False,12,True,True,КриптоПро,0.997,150.3
-энидеск,транслит,составлен командой,0,False,False,12,True,True,AnyDesk,0.98,158.1
-ноутбук для работы,намерение,составлен командой,3,False,False,12,True,True,Ноутбук ASUS G16 G614P AMD Ryzen 9 8940HX,0.897,137.3
-бесперебойник,жаргон,составлен командой,0,False,False,12,True,True,ИБП APC Back-UPS 950VA,1.0,133.9
-программа для чертежей,описание задачи,составлен командой,0,False,False,12,False,False,Нормы и расценки на новые технологии в строительстве часть 1 в формате программы для ЭВМ АРОС-Лидер,0.274,146.9
-защита от вирусов для офиса,описание задачи,составлен командой,0,False,False,12,True,True,Kaspersky Security для Microsoft Office 365,0.779,144.6
+astra linux,точное название,выборка организатора,12,True,True,12,True,True,Astra Linux Special Edition 1.7,0.981,147.2
+Microsoft Office для дома и бизнеса,точное название,выборка организатора,1,True,True,12,True,True,Microsoft Office для дома и бизнеса 2024,1.0,157.6
+kaspersky small office security,точное название,выборка организатора,2,True,True,12,True,True,Kaspersky Small Office Security,0.924,162.8
+крипто про csp 5.0,опечатка/раздельное написание,выборка организатора,10,True,True,12,True,True,КриптоПро CSP 5.0: серверная,1.0,154.3
+anydesk,точное название,выборка организатора,1,True,True,12,True,True,AnyDesk,0.952,141.8
+кибер бэкап,точное название,выборка организатора,8,True,True,12,True,True,Киберпротект Кибер Бэкап Стандартная редакция,1.0,167.0
+сканер-вс,точное название,выборка организатора,5,True,True,12,True,True,НПО Эшелон Сканер-ВС 7 в комплекте OC CH Astra Linux Special Edition,0.888,158.9
+мтс,сокращение,выборка организатора,3,True,True,12,True,True,МТС Линк Стандарт,0.984,161.6
+max patrol,раздельное написание,выборка организатора,2,True,True,12,True,True,Positive Technologies MaxPatrol Endpoint Protection Platform,0.795,154.4
+365,сокращение,выборка организатора,12,False,True,12,True,True,Microsoft 365 для семьи 6GQ-00084,1.0,142.1
+сервер,намерение,пример из ТЗ,12,False,False,12,True,True,Сервер INFERIT RS108 R1G2D24/1x4216/2x16GB/4x240GB/9361-8i/2x800W,0.878,141.3
+по для сервера,намерение,пример из ТЗ,12,False,False,12,True,True,Kaspersky Security для почтовых серверов базовая,0.886,147.5
+антивирь,жаргон,пример из ТЗ,0,False,False,12,True,True,Доктор Веб Dr.Web Server Security Suite,0.961,141.8
+офис,жаргон,пример из ТЗ,12,False,False,12,True,True,Microsoft Office для дома и бизнеса 2024,0.913,145.3
+винда,жаргон,пример из ТЗ,0,False,False,12,True,True,Microsoft Windows 11 Pro FQC-10572,0.82,148.8
+астра линукс,опечатка/транслит,пример из ТЗ,0,False,False,12,True,True,Astra Linux Special Edition 1.7,1.0,167.2
+мдаемон,опечатка/транслит,пример из ТЗ,0,False,False,12,True,True,MDaemon Technologies MDaemon,0.909,139.4
+fcnhf kbyerc,раскладка,составлен командой,0,False,False,12,True,True,Astra Linux Special Edition 1.7,1.0,972.9
+касперский смол офис,транслит,составлен командой,0,False,False,12,True,True,Kaspersky Small Office Security,0.9,181.9
+кибербекап,опечатка,составлен командой,0,False,False,12,True,True,Киберпротект Кибер Бэкап,0.937,162.3
+крипта про,жаргон,составлен командой,0,False,False,12,True,True,КриптоПро,0.997,149.0
+энидеск,транслит,составлен командой,0,False,False,12,True,True,AnyDesk,0.98,131.7
+ноутбук для работы,намерение,составлен командой,3,False,False,12,True,True,Ноутбук ASUS G16 G614P AMD Ryzen 9 8940HX,0.897,158.7
+бесперебойник,жаргон,составлен командой,0,False,False,12,True,True,ИБП APC Back-UPS 950VA,1.0,157.6
+программа для чертежей,описание задачи,составлен командой,0,False,False,12,False,False,Нормы и расценки на новые технологии в строительстве часть 1 в формате программы для ЭВМ АРОС-Лидер,0.274,157.1
+защита от вирусов для офиса,описание задачи,составлен командой,0,False,False,12,True,True,Kaspersky Security для Microsoft Office 365,0.979,161.4

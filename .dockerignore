@@ -1,0 +1,9 @@
+.git
+.claude
+**/__pycache__
+*.pyc
+.env
+data/raw/*.xml
+data/raw/*.pdf
+data/runtime
+data/hf

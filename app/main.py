@@ -8,6 +8,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -62,7 +63,10 @@ def startup() -> None:
     t = time.time()
     ix = SearchIndex.load(DATA / "index")
     llm = GigaChatRewriter.from_env(RUNTIME)
-    s = SmartSearch(ix, DATA / "synonyms.json", llm=llm)
+    s = SmartSearch(ix, DATA / "synonyms.json", llm=llm, custom_synonyms=RUNTIME / "synonyms_custom.json")
+    if llm is not None:
+        # Токен GigaChat заранее, в фоне: первый неуверенный запрос не ждёт авторизации.
+        threading.Thread(target=llm.warmup, daemon=True).start()
     s.warmup()
     s.search("astra linux", use_llm=False)  # прогрев модели эмбеддингов
     state.update(search=s, analytics=Analytics(RUNTIME / "analytics.db"), llm=llm is not None,
@@ -88,14 +92,41 @@ def health() -> dict:
 
 @app.get("/api/search")
 def api_search(q: str = Query(..., min_length=1, max_length=200), session: str | None = None,
-               limit: int = Query(12, ge=4, le=40)) -> dict:
-    res = state["search"].search(q, limit=limit)
+               limit: int = Query(12, ge=4, le=40), llm: int = Query(1, ge=0, le=1),
+               event: str | None = None) -> dict:
+    """llm=0 — мгновенная выдача без LLM; клиент при can_refine повторяет запрос с llm=1 и event=<id>,
+    и событие в журнале обновляется, а не дублируется."""
+    res = state["search"].search(q, limit=limit, use_llm=bool(llm))
     try:
-        res["event_id"] = state["analytics"].log_search(res, session)
+        if event:
+            state["analytics"].update_search(event, res)
+            res["event_id"] = event
+        else:
+            res["event_id"] = state["analytics"].log_search(res, session)
     except Exception:  # журнал не должен ломать поиск покупателю
         log.exception("не удалось записать событие поиска")
-        res["event_id"] = None
+        res["event_id"] = event
     return res
+
+
+class Synonym(BaseModel):
+    term: str
+    expansions: list[str]
+
+
+@app.post("/api/synonyms")
+def api_add_synonym(s: Synonym) -> dict:
+    """Команда магазина пополняет словарь из аналитики: запрос сразу начинает находиться без LLM."""
+    try:
+        return state["search"].add_synonym(s.term, s.expansions)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+
+
+@app.get("/api/synonyms")
+def api_synonyms() -> dict:
+    s: SmartSearch = state["search"]
+    return {"base": len(s.synonyms) - len(s.custom), "custom": s.custom}
 
 
 @app.get("/api/suggest")

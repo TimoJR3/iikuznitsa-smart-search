@@ -374,20 +374,37 @@ async function runSearch(q) {
   setStage("results");
   $("#rail-search").innerHTML = `<div class="rail-head"><h2>Ищем…</h2></div>`;
   let r;
-  try { r = await fetch(`/api/search?q=${encodeURIComponent(q)}&session=${session}`).then((x) => x.json()); }
+  const my = ++searchSeq;
+  try { r = await fetch(`/api/search?q=${encodeURIComponent(q)}&session=${session}&llm=0`).then((x) => x.json()); }
   catch (e) { $("#rail-search").innerHTML = `<div class="rail-head"><h2>Поиск недоступен</h2><p>Сервер не ответил. Повторите запрос через несколько секунд.</p></div>`; return; }
+  if (my !== searchSeq) return;
+  showResults(r, q);
+  // Неуверенный ответ: выдача уже на экране, GigaChat уточняет запрос вторым шагом.
+  if (r.can_refine) {
+    const r2 = await fetch(`/api/search?q=${encodeURIComponent(q)}&session=${session}&llm=1&event=${r.event_id}`).then((x) => x.json()).catch(() => null);
+    if (my !== searchSeq) return;
+    if (r2 && r2.understanding.rewritten_by_llm) showResults(r2, q, true);
+    else renderTrace(r, "none");
+  }
+}
+let searchSeq = 0;
+
+function showResults(r, q, refined = false) {
   S.lastEvent = r.event_id;
   S.results = r.items; S.query = r.query_xy; S.queryText = q; S.raysT0 = performance.now(); S.hot = -1;
-  renderTrace(r); renderResults(r);
+  renderTrace(r, r.can_refine ? "pending" : refined ? "done" : "");
+  renderResults(r);
   setTimeout(() => fit([...r.items.slice(0, 8).map((it) => it.xy), r.query_xy], 0.18, 14), 60);
 }
 
-function renderTrace(r) {
+function renderTrace(r, llmState = "") {
   const u = r.understanding, steps = [`<li>Запрос <b>${esc(r.query)}</b></li>`];
   if (u.layout_fixed) steps.push(`<li>Раскладка <b>${esc(u.normalized)}</b></li>`);
   for (const [a, b] of Object.entries(u.corrections || {})) steps.push(`<li><s>${esc(a)}</s> <b>${esc(b)}</b></li>`);
   if (u.expansions?.length) steps.push(`<li>Синонимы <b>${esc(u.expansions.join(", "))}</b></li>`);
-  if (u.rewritten_by_llm) steps.push(`<li class="llm">GigaChat <b>${esc(u.rewritten_by_llm)}</b></li>`);
+  if (u.rewritten_by_llm) steps.push(`<li class="llm">GigaChat понял как <b>${esc(u.rewritten_by_llm)}</b></li>`);
+  else if (llmState === "pending") steps.push(`<li class="llm pending">GigaChat уточняет запрос…</li>`);
+  else if (llmState === "none") steps.push(`<li class="llm">GigaChat не нашёл лучшего толкования</li>`);
   if (u.intent !== "any") steps.push(`<li class="intent"><b>${u.intent === "hardware" ? "Оборудование" : "Программы"}</b>${u.intent_reason ? ", " + esc(u.intent_reason) : ""}</li>`);
   const el = $("#trace");
   el.innerHTML = steps.map((s, k) => s.replace("<li", `<li style="animation-delay:${k * 90}ms"`)).join("");
@@ -396,7 +413,7 @@ function renderTrace(r) {
 
 function chips(it) {
   const c = [`<span class="chip"><span class="sw" style="background:${COLORS[it.group]}"></span>${esc(it.kind)}</span>`];
-  for (const b of it.badges || []) c.push(`<span class="chip ${b.type === "promo" ? "promo" : ""}">${esc(b.text)}</span>`);
+  for (const b of it.badges || []) c.push(`<span class="chip ${b.type === "promo" || b.type === "deal" ? b.type : ""}">${esc(b.text)}</span>`);
   return `<div class="chips">${c.join("")}</div>`;
 }
 
@@ -414,7 +431,7 @@ function renderResults(r) {
   const alts = r.alternatives?.length ? `<section><h4>Аналоги других производителей</h4><p class="why">тот же раздел каталога, от дешёвых к дорогим</p>
       ${r.alternatives.map((x) => mini(x, "alternative")).join("")}</section>` : "";
   $("#rail-search").innerHTML = `<div class="rail-head"><h2>${n} ${plural(n, "товар", "товара", "товаров")}</h2>
-      <p>за ${Math.round(r.latency_ms)} мс${r.llm_used ? ", запрос уточнила GigaChat" : ""}. Номера совпадают с метками на карте.</p></div>
+      <p>за ${Math.round(r.latency_ms)} мс${r.llm_used ? ", запрос уточнила GigaChat" : ""}${r.can_refine ? ". GigaChat ищет точнее, выдача обновится" : ""}. Номера совпадают с метками на карте.</p></div>
       ${notice}<ol class="results">${items}</ol>
       ${blocks || alts ? `<div class="side-blocks">${blocks}${alts}</div>` : ""}`;
 }
@@ -460,6 +477,7 @@ async function openProduct(id, fly) {
       <div><span class="price"><small>от</small>${rub(p.price_from)}</span>${chips(p)}</div>
       <a class="cta" href="${esc(p.url)}" target="_blank" rel="noopener">Открыть в магазине</a>
     </div>
+    ${p.price_note ? `<p class="price-note">${esc(p.price_note)}</p>` : ""}
     ${p.bundles?.length ? `<div class="d-section"><h3>С этим продуктом берут</h3>
       <p class="why">Сопутствующие решения из каталога: экосистема вендора и разделы, которые нужны вместе. На карте показаны пунктиром.</p>
       ${orbit(p)}</div>` : ""}
@@ -568,7 +586,7 @@ function setMode(mode) {
 const pct = (v) => (v == null ? "—" : Math.round(v * 100) + "%");
 async function loadAnalytics(src = $("#an-source")?.value || "") {
   const qs = src ? "?source=" + src : "";
-  const [a, dm] = await Promise.all([fetch("/api/analytics" + qs).then((x) => x.json()), fetch("/api/analytics/map" + qs).then((x) => x.json())]);
+  const [a, dm, syn] = await Promise.all([fetch("/api/analytics" + qs).then((x) => x.json()), fetch("/api/analytics/map" + qs).then((x) => x.json()), fetch("/api/synonyms").then((x) => x.json())]);
   S.demand = dm; S.focusQuery = null;
   const t = a.totals, n = t.searches || 0;
   const cats = a.categories, max = Math.max(1, ...cats.map((c) => c.n));
@@ -596,17 +614,45 @@ async function loadAnalytics(src = $("#an-source")?.value || "") {
         ${g.llm_rewrite ? `<div class="llm">GigaChat: ${esc(g.llm_rewrite)}</div>` : ""}
         <div class="labels">${Object.entries(a.gap_labels).map(([k, v]) => `<button type="button" data-label="${k}" class="${g.label === k ? "on" : ""}">${esc(v)}</button>`).join("")}</div>
       </div>`).join("") : `<p class="why">Все запросы получили уверенный ответ.</p>`}</div>
+    <div class="an-sec"><h3>Пополнение словаря</h3>
+      <p class="why">Эти запросы поиск понял только с помощью GigaChat. Добавьте толкование в словарь, и запрос будет находиться сразу, без вызова модели.</p>
+      ${(a.suggestions || []).map((s) => `<div class="sug" data-term="${esc(s.query)}" data-exp="${esc(s.rewrite)}">
+        <div><b>«${esc(s.query)}»</b> → ${esc(s.rewrite)}</div>
+        <button type="button" class="add-syn" ${syn.custom[s.query] ? "disabled" : ""}>${syn.custom[s.query] ? "В словаре" : "Добавить в словарь"}</button></div>`).join("") || `<p class="why">Пока нет запросов, которые понадобилось уточнять.</p>`}
+      <form class="syn-form" id="syn-form">
+        <input name="term" placeholder="Запрос клиента: касперыч" aria-label="Запрос клиента" required>
+        <input name="exp" placeholder="Как в каталоге: kaspersky" aria-label="Термин каталога" required>
+        <button type="submit">Добавить</button>
+      </form></div>
     <div class="an-sec"><h3>Частые запросы</h3>
       ${a.top_queries.map((q) => `<div class="qrow" data-q="${esc(q.query)}"><span>${esc(q.query)}</span><span>${q.n}</span><span class="pill ${q.status}">${STATUS_TEXT[q.status]}</span></div>`).join("")}</div>
     <div class="an-sec"><h3>Разделы, где находят товар</h3>
       ${cats.map((c) => `<div class="bar"><div class="lbl"><span>${esc(c.category.split(" > ").slice(-2).join(" / "))}</span><span>${c.n}</span></div>
         <div class="track"><div class="fill" style="width:${(c.n / max) * 100}%;background:${BEACON}"></div></div></div>`).join("") || `<p class="why">Нет данных</p>`}</div>`;
   $("#an-source").onchange = (e) => loadAnalytics(e.target.value);
+  $("#syn-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target, term = f.term.value.trim(), exp = f.exp.value.trim();
+    if (!term || !exp) return;
+    await addSynonym(term, exp.split(",").map((x) => x.trim()));
+    f.reset(); loadAnalytics($("#an-source").value);
+  };
   $("#an-refresh").onclick = () => loadAnalytics($("#an-source").value);
   fit(dm.map((d) => d.xy), 0.12, 3);
   S.dirty = true;
 }
+async function addSynonym(term, expansions) {
+  return fetch("/api/synonyms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ term, expansions }) }).then((x) => x.json());
+}
 $("#rail-analytics").addEventListener("click", async (e) => {
+  const add = e.target.closest(".add-syn");
+  if (add) {
+    e.stopPropagation();
+    const row = add.closest(".sug");
+    await addSynonym(row.dataset.term, [row.dataset.exp]);
+    add.textContent = "В словаре"; add.disabled = true;
+    return;
+  }
   const lb = e.target.closest("button[data-label]");
   if (lb) {
     e.stopPropagation();

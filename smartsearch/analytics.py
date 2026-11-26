@@ -77,6 +77,20 @@ class Analytics:
             self.db.commit()
         return eid
 
+    def update_search(self, event_id: str, res: dict) -> None:
+        """Второй шаг того же поиска (уточнение GigaChat): обновляем событие, а не пишем новое."""
+        u = res["understanding"]
+        top = res["items"]
+        with self._lock:
+            self.db.execute(
+                """UPDATE search_events SET expanded=?, intent=?, status=?, confidence=?, llm_used=?, llm_rewrite=?,
+                   n_results=?, top_product_ids=?, top_title=?, top_category=?, latency_ms=latency_ms+? WHERE event_id=?""",
+                (u["expanded"], u["intent"], res["status"], res["confidence"], int(res["llm_used"]), u["rewritten_by_llm"],
+                 len(top), json.dumps([it["product_id"] for it in top[:10]]), top[0]["title"] if top else "",
+                 top[0]["category"] if top else "", res["latency_ms"], event_id),
+            )
+            self.db.commit()
+
     def log_click(self, event_id: str, product_id: int, position: int, block: str) -> None:
         with self._lock:
             self.db.execute("INSERT INTO clicks VALUES (?,?,?,?,?)",
@@ -134,6 +148,11 @@ class Analytics:
         recent = self._rows(f"""
             SELECT ts, query, status, confidence, llm_rewrite, top_title, latency_ms FROM search_events {where}
             ORDER BY ts DESC LIMIT 15""", args)
-        return {"totals": tot, "top_queries": top_q, "gaps": gaps, "intents": intents,
+        # Кандидаты в словарь: запросы, которые поиск понял только с помощью GigaChat.
+        suggestions = self._rows(f"""
+            SELECT lower(query) AS query, MAX(llm_rewrite) AS rewrite, COUNT(*) AS n, MAX(status) AS status
+            FROM search_events {(where + ' AND') if where else 'WHERE'} llm_rewrite != ''
+            GROUP BY lower(query) ORDER BY n DESC LIMIT 20""", args)
+        return {"totals": tot, "top_queries": top_q, "gaps": gaps, "intents": intents, "suggestions": suggestions,
                 "categories": categories, "by_hour": by_hour, "recent": recent,
                 "gap_labels": GAP_LABELS}

@@ -117,11 +117,21 @@ class Understanding:
 
 
 class SmartSearch:
-    def __init__(self, index: SearchIndex, synonyms_path: Path, llm=None) -> None:
+    def __init__(self, index: SearchIndex, synonyms_path: Path, llm=None, custom_synonyms: Path | None = None) -> None:
         self.ix = index
         self.p = index.products
         raw = json.loads(synonyms_path.read_text(encoding="utf-8"))
         self.synonyms = {k: v for k, v in raw.items() if not k.startswith("_")}
+        # Пополнения словаря от команды магазина (вкладка аналитики): поверх базового словаря.
+        self.custom_path = custom_synonyms
+        self.custom: dict[str, list[str]] = {}
+        if custom_synonyms and custom_synonyms.exists():
+            self.custom = json.loads(custom_synonyms.read_text(encoding="utf-8"))
+            self.synonyms.update(self.custom)
+        # Медиана цены по разделу каталога: для отметки «дешевле аналогов».
+        g = self.p[self.p["min_price"] > 0].groupby("category_id")["min_price"]
+        self.cat_median = g.median().to_dict()
+        self.cat_count = g.size().to_dict()
         self.vocab_keys = [w for w, c in index.vocab.items() if len(w) >= 3 and not w.isdigit()]
         self.vocab_set = set(index.vocab)
         self.is_hw = (self.p["product_type"] == "электроника").to_numpy()
@@ -130,6 +140,17 @@ class SmartSearch:
         self._titles = titles.tolist()
         self._vendor_norm = self.p["vendor"].map(normalize).to_numpy()
         self._quick_cache: dict[str, list[int]] = {}
+
+    def add_synonym(self, term: str, expansions: list[str]) -> dict:
+        term = normalize(term)
+        exp = [normalize(e) for e in expansions if normalize(e)]
+        if not term or not exp:
+            raise ValueError("пустой термин или расшифровка")
+        self.synonyms[term] = exp
+        self.custom[term] = exp
+        if self.custom_path:
+            self.custom_path.write_text(json.dumps(self.custom, ensure_ascii=False, indent=1), encoding="utf-8")
+        return {"term": term, "expansions": exp}
 
     # ---------- понимание запроса ----------
     def understand(self, query: str) -> Understanding:
@@ -154,8 +175,8 @@ class SmartSearch:
             if i not in used and t in self.synonyms:
                 u.expansions += self.synonyms[t]
         # Опечатки и кириллица вместо латиницы: «мдаемон» -> mdaemon, «линукс» -> linux.
-        for t in toks:
-            if t in self.vocab_set or t in self.synonyms or t.isdigit() or len(t) < 4:
+        for i, t in enumerate(toks):
+            if i in used or t in self.vocab_set or t in self.synonyms or t.isdigit() or len(t) < 4:
                 continue
             cands = [t, translit(t)] if has_cyr(t) else [t]
             best = None
@@ -164,7 +185,8 @@ class SmartSearch:
                     best = (c, 100)
                     break
                 m = process.extractOne(c, self.vocab_keys, scorer=fuzz.ratio, score_cutoff=80)
-                if m and (best is None or m[1] > best[1]):
+                # Опечатки редко трогают первую букву: «чертежей» не превращаем в «сечения».
+                if m and m[0][0] == c[0] and (best is None or m[1] > best[1]):
                     best = (m[0], m[1])
             if best and best[0] != t:
                 u.corrections[t] = best[0]
@@ -276,12 +298,14 @@ class SmartSearch:
                     break
         items = [self._card(i, rank) for rank, i in enumerate(top[:limit])]
         status = "ok" if confidence >= 0.5 else ("weak" if confidence >= 0.3 else "no_match")
+        can_refine = (not use_llm) and confidence < 0.5 and self.llm is not None
         result = {
             "query": query,
             "understanding": {**asdict(u), "expanded": u.expanded},
             "status": status,
             "confidence": round(confidence, 3),
             "llm_used": llm_used,
+            "can_refine": can_refine,
             "items": items,
             "query_xy": self.query_xy(top[:limit]),
             "bundles": self.recommend(top[0], exclude=set(top[:limit])) if top else [],
@@ -322,6 +346,14 @@ class SmartSearch:
         badges = []
         if r["max_discount"] > 0:
             badges.append({"type": "promo", "text": f"Акция −{round(r['max_discount'] * 100)}%"})
+        note = ""
+        med, cnt = self.cat_median.get(r["category_id"]), self.cat_count.get(r["category_id"], 0)
+        pct = round((1 - r["min_price"] / med) * 100) if med else 0
+        # Сравнение честное только для сопоставимых цен: 15–60% ниже медианы раздела, в разделе от 5 продуктов.
+        if med and cnt >= 5 and 15 <= pct <= 60:
+            badges.append({"type": "deal", "text": f"Дешевле аналогов на {pct}%"})
+            note = (f"Цена от {r['min_price']:,.0f} ₽ ниже медианы раздела «{r['category']}» на {pct}% "
+                    f"(по {cnt} продуктам каталога).").replace(",", " ")
         if r["n_offers"] > 1:
             badges.append({"type": "variants", "text": f"{int(r['n_offers'])} вариантов лицензии"})
         return {
@@ -337,6 +369,7 @@ class SmartSearch:
             "url": r["url"],
             "picture": r["picture"],
             "badges": badges,
+            "price_note": note,
         }
 
     # ---------- допродажа ----------

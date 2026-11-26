@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -40,6 +41,12 @@ class GigaChatRewriter:
         return cls(cred, os.getenv("GIGACHAT_CA_BUNDLE"), os.getenv("GIGACHAT_MODEL", "GigaChat-2"),
                    cache_path=data_dir / "llm_cache.json", usage_log=data_dir / "llm_usage.jsonl")
 
+    def warmup(self) -> None:
+        try:
+            self.client.get_token()
+        except Exception as e:
+            self._log({"warmup_error": type(e).__name__})
+
     def rewrite(self, query: str) -> str | None:
         key = query.strip().lower()
         if key in self.cache:
@@ -52,6 +59,7 @@ class GigaChatRewriter:
             return None
         lines = [ln.strip(" .\"«»*-") for ln in r.choices[0].message.content.splitlines() if ln.strip(" .\"«»*-")]
         text = lines[0][:120] if lines else ""
+        text = re.sub(r"^(?:категория|запрос|ответ|ключевые слова)\s*:\s*", "", text, flags=re.IGNORECASE)
         if text.upper().startswith("НЕТ"):
             text = ""
         self._log({"query": query, "rewrite": text, "model": self.model,

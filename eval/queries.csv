@@ -1,0 +1,27 @@
+query,type,source,target,expect_vendor_slug,expect_title_regex,expect_kind
+astra linux,точное название,выборка организатора,https://store.softline.ru/astralinux/astra-linux-special-edition/,astralinux,astra linux special edition,ПО
+Microsoft Office для дома и бизнеса,точное название,выборка организатора,https://store.softline.ru/microsoft/microsoft-office-dlya-doma-i-biznesa-2024/,microsoft,office для дома и бизнеса,ПО
+kaspersky small office security,точное название,выборка организатора,https://store.softline.ru/kaspersky/kaspersky-small-office-security/,kaspersky,small office security,ПО
+крипто про csp 5.0,опечатка/раздельное написание,выборка организатора,https://store.softline.ru/kripto-pro/cryptopro-csp/,kripto-pro,криптопро csp,ПО
+anydesk,точное название,выборка организатора,https://store.softline.ru/anydesk/anydesk/,anydesk,anydesk,ПО
+кибер бэкап,точное название,выборка организатора,https://store.softline.ru/cyberprotect/?filter%5Bcategory%5D%5B%5D=1033,cyberprotect,кибер бэкап,ПО
+сканер-вс,точное название,выборка организатора,https://store.softline.ru/npo-echelon/eshelon-skaner-vs/,npo-echelon,сканер-вс,ПО
+мтс,сокращение,выборка организатора,https://store.softline.ru/webinar/,webinar,мтс линк,ПО
+max patrol,раздельное написание,выборка организатора,https://store.softline.ru/positive-technologies/maxpatrol-endpoint-protection-platform/,positive-technologies,maxpatrol,ПО
+365,сокращение,выборка организатора,https://store.softline.ru/microsoft/microsoft-365-for-family/,microsoft,microsoft 365,ПО
+сервер,намерение,пример из ТЗ,серверное оборудование,,^(сервер|rack|tower|blade)|серверы и опции > (rack|tower|blade|микро),оборудование
+по для сервера,намерение,пример из ТЗ,ПО для установки на сервер,,сервер,ПО
+антивирь,жаргон,пример из ТЗ,антивирус,,антивирус|kaspersky|dr.web|security,ПО
+офис,жаргон,пример из ТЗ,Microsoft Office,microsoft,office,ПО
+винда,жаргон,пример из ТЗ,Microsoft Windows,microsoft,windows,ПО
+астра линукс,опечатка/транслит,пример из ТЗ,Astra Linux,astralinux,astra linux,ПО
+мдаемон,опечатка/транслит,пример из ТЗ,MDaemon,,mdaemon,ПО
+fcnhf kbyerc,раскладка,составлен командой,Astra Linux,astralinux,astra linux,ПО
+касперский смол офис,транслит,составлен командой,Kaspersky Small Office Security,kaspersky,small office security,ПО
+кибербекап,опечатка,составлен командой,Кибер Бэкап,cyberprotect,кибер бэкап,ПО
+крипта про,жаргон,составлен командой,КриптоПро,kripto-pro,криптопро,ПО
+энидеск,транслит,составлен командой,AnyDesk,anydesk,anydesk,ПО
+ноутбук для работы,намерение,составлен командой,ноутбуки,,^ноутбук,оборудование
+бесперебойник,жаргон,составлен командой,ИБП,,ибп,оборудование
+программа для чертежей,описание задачи,составлен командой,САПР,,компас|autocad|nanocad|cad|чертеж,ПО
+защита от вирусов для офиса,описание задачи,составлен командой,антивирус,,антивирус|kaspersky|dr.web|security|защита,ПО

@@ -8,3 +8,5 @@ data/index/
 *.parquet
 *.npy
 .pytest_cache/
+data/runtime/
+.claude/

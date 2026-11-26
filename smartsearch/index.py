@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from rank_bm25 import BM25Okapi
+from scipy import sparse
 
 from .text import normalize, stems, tokens, translit
 
@@ -49,21 +49,50 @@ def embed(texts: list[str], batch_size: int = 64) -> np.ndarray:
     )
 
 
+class SparseBM25:
+    """BM25 на разреженной матрице: оценка запроса — сумма столбцов, единицы миллисекунд на 10 тыс. карточек."""
+
+    def __init__(self, docs: list[list[str]], k1: float = 1.2, b: float = 0.5) -> None:
+        self.term_id: dict[str, int] = {}
+        rows, cols, vals = [], [], []
+        for d, doc in enumerate(docs):
+            for t, tf in Counter(doc).items():
+                rows.append(d)
+                cols.append(self.term_id.setdefault(t, len(self.term_id)))
+                vals.append(tf)
+        tf = sparse.csr_matrix((vals, (rows, cols)), shape=(len(docs), len(self.term_id)), dtype=np.float32)
+        dl = np.asarray(tf.sum(axis=1)).ravel()
+        df = np.bincount(cols, minlength=len(self.term_id))
+        idf = np.log(1 + (len(docs) - df + 0.5) / (df + 0.5)).astype(np.float32)
+        norm = k1 * (1 - b + b * dl / dl.mean())
+        tf = tf.tocoo()
+        w = idf[tf.col] * tf.data * (k1 + 1) / (tf.data + norm[tf.row])
+        self.w = sparse.csc_matrix((w, (tf.row, tf.col)), shape=tf.shape)
+
+    def scores(self, query_terms: list[str]) -> np.ndarray:
+        ids = [self.term_id[t] for t in query_terms if t in self.term_id]
+        if not ids:
+            return np.zeros(self.w.shape[0], dtype=np.float32)
+        return np.asarray(self.w[:, ids].sum(axis=1)).ravel()
+
+
 @dataclass
 class SearchIndex:
     products: pd.DataFrame
     emb: np.ndarray
-    bm25: BM25Okapi = field(init=False)
+    bm25: SparseBM25 = field(init=False)
     vocab: Counter = field(init=False)
     vendor_names: dict[str, str] = field(init=False)
+    category_stems: list[set[str]] = field(init=False)
 
     def __post_init__(self) -> None:
-        docs = [stems(doc_text(r)) for _, r in self.products.iterrows()]
-        self.bm25 = BM25Okapi(docs, k1=1.2, b=0.5)
-        self.vocab = Counter(t for _, r in self.products.iterrows() for t in tokens(f"{r['title']} {r['vendor']} {r['category']}"))
+        p = self.products
+        self.bm25 = SparseBM25([stems(doc_text(r)) for _, r in p.iterrows()])
+        self.vocab = Counter(t for _, r in p.iterrows() for t in tokens(f"{r['title']} {r['vendor']} {r['category']}"))
+        self.category_stems = [set(stems(c.replace("-", " "))) for c in p["category"]]
         # Названия вендоров и их транслитерация — для запросов кириллицей к латинским брендам.
         self.vendor_names = {}
-        for v in self.products["vendor"].unique():
+        for v in p["vendor"].unique():
             n = normalize(v)
             self.vendor_names[n] = v
             self.vendor_names[translit(n)] = v

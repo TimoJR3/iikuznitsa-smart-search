@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Умный поиск по каталогу ПО и оборудования</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Умный поиск <span>прототип для store.softline.ru</span></div>
+    <nav class="tabs" role="tablist">
+      <button role="tab" aria-selected="true" data-tab="search">Поиск</button>
+      <button role="tab" aria-selected="false" data-tab="analytics">Аналитика поиска</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="tab-search" class="tab-panel">
+      <form id="search-form" class="searchbox" autocomplete="off" role="search">
+        <label for="q" class="sr-only">Поиск по каталогу</label>
+        <input id="q" name="q" type="search" placeholder="Например: винда про, астра линукс, сервер, антивирь для офиса"
+               aria-autocomplete="list" aria-controls="suggest" autofocus>
+        <button type="submit">Найти</button>
+        <div id="suggest" class="suggest" hidden></div>
+      </form>
+      <div class="examples" id="examples"></div>
+
+      <div id="understanding" class="understanding" hidden></div>
+
+      <div class="layout">
+        <div>
+          <div id="status" class="status" hidden></div>
+          <ol id="results" class="results"></ol>
+        </div>
+        <aside id="side" class="side"></aside>
+      </div>
+    </section>
+
+    <section id="tab-analytics" class="tab-panel" hidden>
+      <div class="an-head">
+        <h1>Что ищут клиенты</h1>
+        <div class="an-controls">
+          <label>Источник
+            <select id="an-source">
+              <option value="">Все события</option>
+              <option value="demo">Поиски на стенде</option>
+              <option value="replay">Прогон выборки запросов</option>
+            </select>
+          </label>
+          <button id="an-refresh" type="button">Обновить</button>
+        </div>
+      </div>
+      <p id="an-period" class="muted"></p>
+      <div id="an-kpi" class="kpis"></div>
+      <div class="an-grid">
+        <section class="panel wide">
+          <h2>Запросы без уверенного ответа</h2>
+          <p class="muted">Здесь клиент, скорее всего, не нашёл товар. Отметьте причину, чтобы команда каталога или поиска взяла запрос в работу.</p>
+          <table id="an-gaps" class="table"></table>
+        </section>
+        <section class="panel">
+          <h2>Частые запросы</h2>
+          <table id="an-top" class="table"></table>
+        </section>
+        <section class="panel">
+          <h2>Категории, которые находят</h2>
+          <div id="an-cats" class="bars"></div>
+        </section>
+        <section class="panel wide">
+          <h2>Последние поиски</h2>
+          <table id="an-recent" class="table"></table>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

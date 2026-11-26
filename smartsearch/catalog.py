@@ -59,10 +59,37 @@ _VARIANT_TAIL = re.compile(
 )
 
 
+_LEGAL = re.compile(r",?\s+(?:Ltd|Inc|LLC|GmbH|Corp|Co|AG|S\.A|s\.r\.o)\.?(?=[\s,(]|$)", re.IGNORECASE)
+_VARIANT_WORDS = re.compile(r"лиценз|подпис|продлен|обновлен|\bна\s+\d|\d+\s*(?:год|мес|лет)|пользоват|верси|редакц|сертиф|ключ")
+
+
 def base_title(name: str) -> str:
-    """Название продукта без параметров варианта: срок, число мест, тип лицензии."""
-    title = re.split(r"\s*[(,]", name, maxsplit=1)[0]
+    """Название продукта без параметров варианта: срок, число мест, тип лицензии.
+
+    «МТС Линк (Webinar Group) МТС Линк Стандарт (лицензия), на 1 год» -> «МТС Линк Стандарт»;
+    «MDaemon Technologies, Ltd. MDaemon Messaging Server (продление…)» -> «MDaemon Technologies MDaemon Messaging Server».
+    """
+    s = _LEGAL.sub("", name.replace("&amp;", "&")).replace("«", "").replace("»", "").replace("®", "")
+    s = re.sub(r"\s+", " ", s).strip()
+    # Скобка-уточнение вендора посреди названия (без слов про вариант) выбрасывается, первая «вариантная» скобка — граница.
+    while True:
+        m = re.search(r"\(([^()]*)\)", s)
+        if not m:
+            break
+        after = re.split(r"[(,]", s[m.end():], maxsplit=1)[0].strip()
+        if not _VARIANT_WORDS.search(m.group(1).lower()) and len(after) >= 3:
+            s = (s[: m.start()] + " " + s[m.end():]).strip()
+            s = re.sub(r"\s+", " ", s)
+            continue
+        break
+    title = re.split(r"\s*[(,]", s, maxsplit=1)[0]
     title = _VARIANT_TAIL.sub("", title).strip(" -–—.:")
+    # «МТС Линк МТС Линк Стандарт» -> «МТС Линк Стандарт»: убираем повтор начала.
+    words = title.split()
+    for n in range(min(4, len(words) // 2), 0, -1):
+        if words[:n] == words[n: 2 * n]:
+            title = " ".join(words[n:])
+            break
     return title or name.strip()
 
 

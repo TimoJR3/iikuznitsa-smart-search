@@ -1,5 +1,7 @@
 # Умный поиск по каталогу store.softline.ru
 
+**Стенд:** https://smart-search.containerapps.ru
+
 Прототип для задачи «Умный поиск на сайте» хакатона ИИкузница (трек «Аналитик данных»). Поиск понимает смысл запроса, жаргон, опечатки и раскладку, различает «серверное оборудование» и «ПО для сервера», всегда отвечает минимум четырьмя товарами и предлагает сопутствующие решения. Команда магазина видит, что ищут клиенты и какие запросы остались без ответа.
 
 ## Что умеет
@@ -72,6 +74,18 @@ python -m pytest -q
 GigaChat необязателен. Чтобы включить, задайте `GIGACHAT_CREDENTIALS` и путь к корневому сертификату Минцифры в `GIGACHAT_CA_BUNDLE` (см. `.env.example`).
 
 ## Стенд
+
+Рабочий стенд — Cloud.ru Evolution Container Apps (1 vCPU, 2 ГБ, один постоянный экземпляр): https://smart-search.containerapps.ru. Образ собирается из [`deploy/cloudru/Dockerfile`](deploy/cloudru/Dockerfile) и загружается в Artifact Registry:
+
+```bash
+python scripts/build_index.py
+docker build --platform linux/amd64 -f deploy/cloudru/Dockerfile -t <реестр>.cr.cloud.ru/smart-search:<тег> .
+docker push <реестр>.cr.cloud.ru/smart-search:<тег>
+```
+
+Замер на стенде 26.11.2026: ответ поиска 270–300 мс на сервере без LLM, запуск контейнера 22 с. Ключ GigaChat передаётся переменной окружения `GIGACHAT_CREDENTIALS`.
+
+Вариант на своём сервере с HTTPS через Caddy:
 
 ```bash
 cp .env.example .env   # ключ GigaChat и SITE_ADDRESS=<ip>.sslip.io для HTTPS

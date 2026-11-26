@@ -85,3 +85,15 @@ def test_verified_recommendations_have_sources(search):
 def test_registry_badge(search):
     r = search.search("astra linux", use_llm=False)
     assert any(b["type"] == "registry" for b in r["items"][0]["badges"])
+
+
+def test_filters_and_sort(search):
+    r = search.search("антивирь", use_llm=False, filters={"domestic": True, "sort": "price_asc"})
+    prices = [it["price_from"] for it in r["items"]]
+    assert len(r["items"]) >= 4 and prices == sorted(prices)
+    assert r["facets"]["kind"]["software"] > 0
+
+
+def test_results_explain_why(search):
+    r = search.search("fcnhf kbyerc", use_llm=False)
+    assert "исправлена раскладка клавиатуры" in r["items"][0]["why"]

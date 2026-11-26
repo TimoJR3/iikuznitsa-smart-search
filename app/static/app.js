@@ -27,7 +27,7 @@ const S = {
   results: [], query: null, queryText: "", raysT0: 0,
   links: [], suggest: [], off: new Set(),
   mode: "search", demand: [], demandHover: -1, focusQuery: null,
-  tween: null, dirty: true, lastEvent: null,
+  tween: null, dirty: true, lastEvent: null, filters: {}, lastLlm: false,
 };
 
 /* ===================== карта ===================== */
@@ -370,6 +370,7 @@ async function runSearch(q) {
   if (!q) return;
   clearTimeout(timer); seq++;
   hideSuggest(); closeDrawer(false); input.blur();
+  S.filters = {};
   history.replaceState(null, "", "?q=" + encodeURIComponent(q));
   setStage("results");
   $("#rail-search").innerHTML = `<div class="rail-head"><h2>Ищем…</h2></div>`;
@@ -389,8 +390,17 @@ async function runSearch(q) {
 }
 let searchSeq = 0;
 
+function filterQs(f) {
+  return Object.entries(f).filter(([, v]) => v !== "" && v != null && v !== false).map(([k, v]) => `&${k}=${encodeURIComponent(v === true ? 1 : v)}`).join("");
+}
+async function applyFilters() {
+  const q = S.queryText, my = ++searchSeq;
+  const r = await fetch(`/api/search?q=${encodeURIComponent(q)}&session=${session}&llm=${S.lastLlm ? 1 : 0}&event=${S.lastEvent || ""}${filterQs(S.filters)}`).then((x) => x.json()).catch(() => null);
+  if (r && my === searchSeq) showResults({ ...r, can_refine: false }, q, r.llm_used);
+}
+
 function showResults(r, q, refined = false) {
-  S.lastEvent = r.event_id;
+  S.lastEvent = r.event_id; S.lastLlm = !!r.llm_used;
   S.results = r.items; S.query = r.query_xy; S.queryText = q; S.raysT0 = performance.now(); S.hot = -1;
   renderTrace(r, r.can_refine ? "pending" : refined ? "done" : "");
   renderResults(r);
@@ -428,16 +438,35 @@ function renderResults(r) {
   const items = r.items.map((it, k) => `<li class="result" data-pid="${it.product_id}" data-pos="${k}" tabindex="0">
       <span class="rank">${k + 1}</span>
       <div><h3>${esc(it.title)}</h3><div class="vendor">${esc(it.vendor)}</div>
-      <div class="row">${chips(it)}<span class="price"><small>от</small>${rub(it.price_from)}</span></div></div></li>`).join("");
+      <div class="row">${chips(it)}<span class="price"><small>от</small>${rub(it.price_from)}</span></div>
+      ${it.why?.length ? `<p class="why-line">Почему здесь: ${esc(it.why.join(", "))}</p>` : ""}</div></li>`).join("");
   const blocks = (r.bundles || []).map((b) => `<section><h4>${esc(b.title)}</h4><p class="why">${esc(b.reason)}</p>
       ${b.items.map((x) => mini(x, "bundle")).join("")}</section>`).join("");
   const alts = r.alternatives?.length ? `<section><h4>Аналоги других производителей</h4><p class="why">тот же раздел каталога, от дешёвых к дорогим</p>
       ${r.alternatives.map((x) => mini(x, "alternative")).join("")}</section>` : "";
   $("#rail-search").innerHTML = `<div class="rail-head"><h2>${n} ${plural(n, "товар", "товара", "товаров")}</h2>
       <p>за ${Math.round(r.latency_ms)} мс${r.llm_used ? ", запрос уточнила GigaChat" : ""}${r.can_refine ? ". GigaChat ищет точнее, выдача обновится" : ""}. Номера совпадают с метками на карте.</p></div>
-      ${notice}<ol class="results">${items}</ol>
+      ${facetsBar(r)}${notice}<ol class="results">${items}</ol>
       ${blocks || alts ? `<div class="side-blocks">${blocks}${alts}</div>` : ""}`;
 }
+function facetsBar(r) {
+  const f = r.facets || {}, cur = S.filters;
+  if (!f.pool) return "";
+  const kinds = f.kind || {};
+  const seg = (kinds.software && kinds.hardware) || cur.kind ? `<div class="seg" role="group" aria-label="Тип товара">
+      <button type="button" data-f="kind" data-v="" aria-pressed="${!cur.kind}">Все</button>
+      <button type="button" data-f="kind" data-v="software" aria-pressed="${cur.kind === "software"}">Программы ${kinds.software || ""}</button>
+      <button type="button" data-f="kind" data-v="hardware" aria-pressed="${cur.kind === "hardware"}">Оборудование ${kinds.hardware || ""}</button></div>` : "";
+  const dom = f.domestic || cur.domestic ? `<button type="button" class="toggle" data-f="domestic" aria-pressed="${!!cur.domestic}">Российское ПО ${f.domestic || ""}</button>` : "";
+  const vendors = `<select data-f="vendor" aria-label="Производитель"><option value="">Все производители</option>
+      ${(f.vendors || []).map((v) => `<option value="${esc(v.name)}" ${cur.vendor === v.name ? "selected" : ""}>${esc(v.name)} (${v.n})</option>`).join("")}
+      ${cur.vendor && !(f.vendors || []).some((v) => v.name === cur.vendor) ? `<option selected value="${esc(cur.vendor)}">${esc(cur.vendor)}</option>` : ""}</select>`;
+  const sort = `<select data-f="sort" aria-label="Сортировка"><option value="">По релевантности</option>
+      <option value="price_asc" ${cur.sort === "price_asc" ? "selected" : ""}>Сначала дешевле</option>
+      <option value="price_desc" ${cur.sort === "price_desc" ? "selected" : ""}>Сначала дороже</option></select>`;
+  return `<div class="facets">${seg}<div class="facet-row">${dom}${vendors}${sort}</div></div>`;
+}
+
 function mini(x, block) {
   return `<button type="button" class="mini" data-pid="${x.product_id}" data-block="${block}">
     <span><span class="sw" style="background:${COLORS[x.group]}"></span>${esc(x.title)}</span><small>от ${rub(x.price_from)}</small></button>${fact(x)}`;
@@ -458,6 +487,20 @@ $("#rail").addEventListener("click", (e) => {
   if (!el) return;
   track(+el.dataset.pid, +(el.dataset.pos || 0), el.dataset.block || "results");
   openProduct(+el.dataset.pid, true);
+});
+$("#rail-search").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-f]");
+  if (!b) return;
+  e.stopPropagation();
+  if (b.dataset.f === "domestic") S.filters.domestic = !S.filters.domestic;
+  else S.filters[b.dataset.f] = b.dataset.v;
+  applyFilters();
+}, true);
+$("#rail-search").addEventListener("change", (e) => {
+  const s = e.target.closest("select[data-f]");
+  if (!s) return;
+  S.filters[s.dataset.f] = s.value;
+  applyFilters();
 });
 $("#rail").addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches(".result")) e.target.click(); });
 
@@ -622,6 +665,17 @@ async function loadAnalytics(src = $("#an-source")?.value || "") {
       <div class="kpi"><b>${pct(t.ctr)}</b><span>поисков с переходом в товар</span></div>
       <div class="kpi"><b>${t.avg_latency_ms ? Math.round(t.avg_latency_ms) + " мс" : "—"}</b><span>среднее время ответа</span></div>
     </div>
+    <div class="an-sec"><h3>Экономический эффект</h3>
+      <p class="why">Сколько заказов возвращает поиск, который понимает запрос. Значения по умолчанию взяты из ТЗ, доля неудачных поисков после внедрения — из журнала стенда. Средний чек — допущение, поставьте свой.</p>
+      <form class="calc" id="calc">
+        <label>Поисков в месяц<input name="s" type="number" min="0" step="500" value="15000"></label>
+        <label>Неудачных сейчас, %<input name="f0" type="number" min="0" max="100" step="1" value="40"></label>
+        <label>Неудачных с умным поиском, %<input name="f1" type="number" min="0" max="100" step="1" value="${Math.max(0, Math.round((1 - (t.understood_share ?? 0.95)) * 100))}"></label>
+        <label>Уходят после неудачи, %<input name="leave" type="number" min="0" max="100" step="1" value="40"></label>
+        <label>Конверсия поиска в заказ, %<input name="conv" type="number" min="0" max="100" step="0.5" value="7.5"></label>
+        <label>Средний чек, ₽<input name="check" type="number" min="0" step="1000" value="50000"></label>
+      </form>
+      <div class="calc-out" id="calc-out" aria-live="polite"></div></div>
     <div class="an-sec"><h3>Запросы без уверенного ответа</h3>
       <p class="why">Нажмите, чтобы увидеть место на карте. Отметьте причину, чтобы запрос ушёл в работу каталогу или поиску.</p>
       ${a.gaps.length ? a.gaps.map((g) => `<div class="gap" data-q="${esc(g.query)}">
@@ -646,6 +700,7 @@ async function loadAnalytics(src = $("#an-source")?.value || "") {
       ${cats.map((c) => `<div class="bar"><div class="lbl"><span>${esc(c.category.split(" > ").slice(-2).join(" / "))}</span><span>${c.n}</span></div>
         <div class="track"><div class="fill" style="width:${(c.n / max) * 100}%;background:${BEACON}"></div></div></div>`).join("") || `<p class="why">Нет данных</p>`}</div>`;
   $("#an-source").onchange = (e) => loadAnalytics(e.target.value);
+  $("#calc").oninput = calc; calc();
   $("#syn-form").onsubmit = async (e) => {
     e.preventDefault();
     const f = e.target, term = f.term.value.trim(), exp = f.exp.value.trim();
@@ -680,6 +735,16 @@ $("#rail-analytics").addEventListener("click", async (e) => {
   const row = e.target.closest("[data-q]");
   if (row) focusDemand(row.dataset.q);
 });
+function calc() {
+  const f = Object.fromEntries([...new FormData($("#calc")).entries()].map(([k, v]) => [k, +v || 0]));
+  const orders = f.s * Math.max(0, f.f0 - f.f1) / 100 * f.leave / 100 * f.conv / 100;
+  const month = orders * f.check;
+  const mln = (v) => (v / 1e6).toLocaleString("ru-RU", { maximumFractionDigits: 1 });
+  $("#calc-out").innerHTML = `<b>+${Math.round(orders).toLocaleString("ru-RU")}</b> ${plural(Math.round(orders), "заказ", "заказа", "заказов")} в месяц,
+    около <b>${mln(month)} млн ₽</b> в месяц и <b>${mln(month * 12)} млн ₽</b> в год.
+    <small>Поиски × (неудачные сейчас − с умным поиском) × доля ушедших × конверсия × средний чек. Это оценка, а не измерение: рост продаж подтверждает A/B-тест после внедрения.</small>`;
+}
+
 function focusDemand(q) {
   const d = S.demand.find((x) => x.query === q);
   if (!d) return;

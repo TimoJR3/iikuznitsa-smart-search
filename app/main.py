@@ -93,10 +93,13 @@ def health() -> dict:
 @app.get("/api/search")
 def api_search(q: str = Query(..., min_length=1, max_length=200), session: str | None = None,
                limit: int = Query(12, ge=4, le=40), llm: int = Query(1, ge=0, le=1),
-               event: str | None = None) -> dict:
+               event: str | None = None, kind: str | None = Query(None, pattern="^(software|hardware)$"),
+               vendor: str | None = Query(None, max_length=120), domestic: int = Query(0, ge=0, le=1),
+               price_max: float | None = Query(None, gt=0), sort: str | None = Query(None, pattern="^(price_asc|price_desc)$")) -> dict:
     """llm=0 — мгновенная выдача без LLM; клиент при can_refine повторяет запрос с llm=1 и event=<id>,
     и событие в журнале обновляется, а не дублируется."""
-    res = state["search"].search(q, limit=limit, use_llm=bool(llm))
+    filters = {"kind": kind, "vendor": vendor, "domestic": bool(domestic), "price_max": price_max, "sort": sort}
+    res = state["search"].search(q, limit=limit, use_llm=bool(llm), filters=filters)
     try:
         if event:
             state["analytics"].update_search(event, res)

@@ -307,7 +307,7 @@ class SmartSearch:
             score += same_cat.astype(np.float32) * 0.004 * (score > 0)
         return score, sem, float(bm.max()) if len(bm) else 0.0
 
-    def search(self, query: str, limit: int = 12, use_llm: bool = True) -> dict:
+    def search(self, query: str, limit: int = 12, use_llm: bool = True, filters: dict | None = None) -> dict:
         t0 = time.perf_counter()
         u = self.understand(query)
         absent = u.absent
@@ -335,8 +335,24 @@ class SmartSearch:
                 top2 = [int(i) for i in order2[: max(limit, MIN_RESULTS)] if score2[i] > 0]
                 c2 = self._confidence(u2, top2, sem2, bm2)
                 if c2 >= confidence + 0.05:
-                    u, top, confidence, sem = u2, top2, c2, sem2
+                    u, top, confidence, sem, score = u2, top2, c2, sem2, score2
                 llm_used = True
+        # Фасеты считаем по пулу кандидатов, фильтры и сортировку применяем к нему же.
+        pool = [int(i) for i in np.argsort(-score)[:80] if score[i] > 0]
+        facets = self._facets(pool)
+        filters = {k: v for k, v in (filters or {}).items() if v not in (None, "", False)}
+        if filters:
+            ok = self._filter_mask(filters)
+            top = [i for i in pool if ok[i]]
+            for i in np.argsort(-sem):  # добор до минимума внутри фильтра
+                if len(top) >= max(limit, MIN_RESULTS):
+                    break
+                if ok[i] and int(i) not in top:
+                    top.append(int(i))
+            if filters.get("sort") in ("price_asc", "price_desc"):
+                head = top[: max(limit, 24)]
+                head.sort(key=lambda i: self.p["min_price"].iat[i], reverse=filters["sort"] == "price_desc")
+                top = head
         # Гарантия минимума: добираем ближайшие по смыслу товары.
         if len(top) < MIN_RESULTS:
             for i in np.argsort(-sem):
@@ -345,6 +361,9 @@ class SmartSearch:
                 if len(top) >= MIN_RESULTS:
                     break
         items = [self._card(i, rank) for rank, i in enumerate(top[:limit])]
+        sem_rank = {int(i): r for r, i in enumerate(np.argsort(-sem)[:40])}
+        for it in items:
+            it["why"] = self._why(it["product_id"], u, sem_rank)
         status = "ok" if confidence >= 0.5 else ("weak" if confidence >= 0.3 else "no_match")
         if absent:
             status = "absent"
@@ -358,11 +377,73 @@ class SmartSearch:
             "can_refine": can_refine,
             "items": items,
             "query_xy": self.query_xy(top[:limit]),
+            "facets": facets,
+            "filters": filters,
             "bundles": self.recommend(top[0], exclude=set(top[:limit])) if top else [],
             "alternatives": self.alternatives(top[0], exclude=set(top[:limit])) if top else [],
             "latency_ms": round((time.perf_counter() - t0) * 1000, 1),
         }
         return result
+
+    # ---------- фасеты, фильтры, объяснение выдачи ----------
+    def _facets(self, pool: list[int]) -> dict:
+        if not pool:
+            return {}
+        p = self.p.iloc[pool]
+        hw = self.is_hw[pool]
+        vendors = p["vendor"].value_counts().head(6)
+        prices = p.loc[p["min_price"] > 0, "min_price"]
+        return {
+            "kind": {"software": int((~hw).sum()), "hardware": int(hw.sum())},
+            "domestic": int(self.is_domestic[pool].sum()),
+            "vendors": [{"name": v, "n": int(n)} for v, n in vendors.items()],
+            "price": [float(prices.min()), float(prices.max())] if len(prices) else None,
+            "pool": len(pool),
+        }
+
+    def _filter_mask(self, f: dict) -> np.ndarray:
+        ok = np.ones(len(self.p), dtype=bool)
+        if f.get("kind") == "software":
+            ok &= ~self.is_hw
+        elif f.get("kind") == "hardware":
+            ok &= self.is_hw
+        if f.get("vendor"):
+            ok &= (self.p["vendor"] == f["vendor"]).to_numpy()
+        if f.get("domestic"):
+            ok &= self.is_domestic
+        if f.get("price_max"):
+            ok &= (self.p["min_price"] <= float(f["price_max"])).to_numpy()
+        return ok
+
+    def _why(self, i: int, u: Understanding, sem_rank: dict[int, int]) -> list[str]:
+        """Почему товар в выдаче: короткие причины для покупателя и для отладки ранжирования."""
+        title, out = self._titles[i], []
+        own = [t for t in tokens(u.normalized) if len(t) > 2 and t not in STOP]
+        if u.layout_fixed:
+            out.append("исправлена раскладка клавиатуры")
+        if u.absent:
+            out.append(f"решает ту же задачу: {u.absent['task']}")
+        elif any(t in title for t in own):
+            out.append("совпадает название")
+        for a, b in u.corrections.items():
+            if b in title or b in self._vendor_norm[i]:
+                out.append(f"исправлено «{a}» → «{b}»")
+                break
+        if u.rewritten_by_llm and any(t in title for t in tokens(u.rewritten_by_llm) if len(t) > 3):
+            out.append("по толкованию GigaChat")
+        elif not u.absent:
+            for e in u.expansions:
+                if any(t in title for t in tokens(e) if len(t) > 2):
+                    out.append(f"синоним «{e}»")
+                    break
+        if self.p["vendor"].iat[i] in u.vendors and not u.absent:
+            out.append("производитель из запроса")
+        q_cat = {s for s in stems(u.expanded) if len(s) >= 4}
+        if q_cat & self.ix.category_stems[i]:
+            out.append(f"раздел «{self.p['category'].iat[i]}»")
+        if sem_rank.get(i, 99) < 30 and len(out) < 3:
+            out.append("близко по смыслу")
+        return out[:3] or ["близко по смыслу"]
 
     def query_xy(self, ids: list[int]) -> list[float]:
         """Точка запроса на карте: взвешенный по рангу центр первых результатов."""

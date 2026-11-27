@@ -220,8 +220,9 @@ class SmartSearch:
                 u.vendors.append(v)
         u.vendors = list(dict.fromkeys(u.vendors))
         words = set(tokens(u.normalized)) | set(tokens(" ".join(u.expansions)))
+        padded = f" {u.normalized} "
         for key, alt in self.replacements.items():
-            if key in words:
+            if (key in words) if " " not in key else (f" {key} " in padded):
                 u.absent = {"key": key, **alt}
                 break
         u.domestic = bool(re.search(r"российск|отечествен|импортозамещ|реестр", u.normalized))
@@ -266,7 +267,7 @@ class SmartSearch:
             vset = {normalize(v) for v in u.vendors}
             score += np.isin(self._vendor_norm, list(vset)).astype(np.float32) * 0.01
         qtok = [t for t in tokens(" ".join([u.normalized, *u.corrections.values(), *u.expansions])) if len(t) > 1]
-        q_cat = {s for s in q_stems if len(s) >= 4}
+        q_cat = {s for s in q_stems if len(s) >= 3}
         cand = np.nonzero(score)[0]
         lexical = np.zeros(len(self.p), dtype=bool)
         for i in cand:

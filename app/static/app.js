@@ -160,7 +160,9 @@ function draw(now) {
   if (S.cam.k < 2.6) {
     ctx.font = "700 22px Unbounded, Onest, sans-serif"; ctx.fillStyle = "rgba(255,255,255,0.22)"; ctx.textAlign = "left";
     for (const [name, x, y] of [["Программы", 0.0, -0.035], ["Оборудование", 0.66, 0.045]]) {
-      const [sx, sy] = toScreen(x, y); ctx.fillText(name, sx, sy);
+      const [sx, sy] = toScreen(x, y);
+      // Не заезжаем под верхнюю панель и левую колонку.
+      ctx.fillText(name, Math.max(sx, S.v.l + 16), Math.max(sy, S.v.t + 34));
     }
   }
   // Подписи разделов видны на общем плане.
@@ -346,7 +348,7 @@ function hideTip() { tip.hidden = true; }
 /* ===================== легенда ===================== */
 function renderLegend() {
   $("#legend").innerHTML = S.groupKeys.map((g, k) =>
-    `<button type="button" data-g="${k}" aria-pressed="${!S.off.has(k)}"><span class="sw" style="background:${COLORS[g]}"></span>${esc(S.groupNames[g])}</button>`).join("");
+    `<button type="button" data-g="${k}" aria-pressed="${!S.off.has(k)}" title="${esc(S.groupNames[g])}"><span class="sw" style="background:${COLORS[g]}"></span><span class="lbl">${esc(S.groupNames[g])}</span></button>`).join("");
 }
 $("#legend").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-g]");
@@ -548,7 +550,7 @@ function sources(p) {
 
 function orbit(p) {
   const items = p.bundles.flatMap((b) => b.items.map((x) => ({ ...x, block: b.title }))).slice(0, 6);
-  const W = 380, H = 270, cx = W / 2, cy = H / 2, RX = 74, RY = 84;
+  const W = 460, H = 300, cx = W / 2, cy = H / 2, RX = 56, RY = 92;
   const nodes = items.map((x, k) => {
     const a = -Math.PI / 2 + ((k + 0.5) / items.length) * Math.PI * 2;
     return { ...x, a, x: cx + Math.cos(a) * RX, y: cy + Math.sin(a) * RY };
@@ -558,7 +560,7 @@ function orbit(p) {
     const right = Math.cos(n.a) > 0.15, left = Math.cos(n.a) < -0.15;
     const anchor = right ? "start" : left ? "end" : "middle";
     const tx = n.x + (right ? 18 : left ? -18 : 0), ty = n.y + (right || left ? 4 : Math.sin(n.a) > 0 ? 30 : -20);
-    const len = anchor === "middle" ? 30 : 14;
+    const len = anchor === "middle" ? 34 : 18;
     return `<text x="${tx}" y="${ty}" text-anchor="${anchor}">${esc(short(n.title, len))}</text>
       <text class="cap" x="${tx}" y="${ty + 13}" text-anchor="${anchor}">${esc(short(n.block, len + 2))}</text>`;
   };
